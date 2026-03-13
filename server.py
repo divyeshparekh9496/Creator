@@ -48,6 +48,7 @@ app.mount("/output", StaticFiles(directory=DEFAULT_OUTPUT_DIR), name="output")
 # ── Job storage ──
 jobs: Dict[str, Dict[str, Any]] = {}
 job_events: Dict[str, list] = {}
+pipeline_refs: Dict[str, Any] = {}  # Store pipeline refs for monitoring
 
 
 class GenerateRequest(BaseModel):
@@ -63,7 +64,7 @@ class FeedbackRequest(BaseModel):
 # ── Health ──
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0", "jobs": len(jobs)}
+    return {"status": "ok", "version": "2.0.0", "jobs": len(jobs)}
 
 
 # ── Generate ──
@@ -103,6 +104,8 @@ async def generate(req: GenerateRequest):
                 output_dir=output_dir,
                 on_progress=on_progress,
             )
+            pipeline_refs[job_id] = pipeline  # Store for monitoring
+
             result = pipeline.run_full(req.story)
 
             # Sanitize result for JSON
@@ -188,11 +191,9 @@ async def submit_feedback(req: FeedbackRequest):
     if req.rating < 1 or req.rating > 5:
         raise HTTPException(400, "Rating must be 1-5")
 
-    # Store feedback
     job.setdefault("feedback", []).append({
         "rating": req.rating, "ts": time.time(),
     })
-
     return {"status": "ok", "rating": req.rating, "job_id": req.job_id}
 
 
@@ -221,9 +222,43 @@ async def list_assets(job_id: str = None):
     return {"assets": assets}
 
 
+# ── Monitoring Dashboard ──
+@app.get("/api/monitor")
+async def monitor():
+    """Monitoring dashboard: API usage, token budget, cache stats per job."""
+    reports = {}
+    for jid, pipeline in pipeline_refs.items():
+        reports[jid] = {
+            "api": pipeline.genai.monitor.get_report(),
+            "tokens": pipeline.genai.token_budget.get_report(),
+            "cache": pipeline.cache.get_stats(),
+        }
+    return {
+        "jobs": len(jobs),
+        "active": sum(1 for j in jobs.values() if j["status"] not in ("done", "error")),
+        "per_job": reports,
+    }
+
+
+@app.get("/api/monitor/{job_id}")
+async def monitor_job(job_id: str):
+    """Monitoring for a specific job."""
+    pipeline = pipeline_refs.get(job_id)
+    if not pipeline:
+        raise HTTPException(404, "Job not found or pipeline not started")
+    return {
+        "api": pipeline.genai.monitor.get_report(),
+        "tokens": pipeline.genai.token_budget.get_report(),
+        "cache": pipeline.cache.get_stats(),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
-    print("\n🎬 Creator API Server starting...")
+    print("\n🎬 Creator API Server v2.0 starting...")
     print("   Docs: http://localhost:8000/docs")
-    print("   Health: http://localhost:8000/api/health\n")
+    print("   Health: http://localhost:8000/api/health")
+    print("   Monitor: http://localhost:8000/api/monitor\n")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
