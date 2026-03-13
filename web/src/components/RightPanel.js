@@ -26,7 +26,7 @@ function FeedbackSlider({ label, value, color }) {
   );
 }
 
-export default function RightPanel({ rlData, characters, selectedScene }) {
+export default function RightPanel({ rlData, characters, selectedScene, onGenerate, onFeedback, isGenerating }) {
   const [storyInput, setStoryInput] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
 
@@ -91,9 +91,15 @@ export default function RightPanel({ rlData, characters, selectedScene }) {
               className="btn-primary"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              style={{ fontSize: 12, padding: "5px 12px" }}
+              style={{ fontSize: 12, padding: "5px 12px", opacity: isGenerating ? 0.6 : 1 }}
+              onClick={() => storyInput.trim() && onGenerate && onGenerate(storyInput)}
+              disabled={isGenerating || !storyInput.trim()}
             >
-              <Send size={12} /> Generate
+              {isGenerating ? (
+                <><div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid white", borderTopColor: "transparent", animation: "spin 0.6s linear infinite" }} /> Generating...</>
+              ) : (
+                <><Send size={12} /> Generate</>
+              )}
             </motion.button>
           </div>
         </div>
@@ -123,6 +129,7 @@ export default function RightPanel({ rlData, characters, selectedScene }) {
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9, rotate: 10 }}
+            onClick={() => onFeedback && onFeedback(true)}
             style={{
               flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 500,
@@ -135,6 +142,7 @@ export default function RightPanel({ rlData, characters, selectedScene }) {
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9, rotate: -10 }}
+            onClick={() => onFeedback && onFeedback(false)}
             style={{
               flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 500,

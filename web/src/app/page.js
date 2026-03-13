@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import Header from "@/components/Header";
 import LeftSidebar from "@/components/LeftSidebar";
@@ -9,37 +9,26 @@ import TimelineEditor from "@/components/TimelineEditor";
 import AssetLibrary from "@/components/AssetLibrary";
 import ExportPanel from "@/components/ExportPanel";
 import ParticleBackground from "@/components/ParticleBackground";
+import { useStream, submitFeedback } from "@/hooks/useStream";
 
-// ── Demo/mock data ──
-const MOCK_SCENES = [
-  { id: 1, title: "The Awakening", arcStage: 1, trait: "timid", shots: 3, rlScore: 0.82, duration: 12, image: null },
-  { id: 2, title: "Doubt Turns to Resolve", arcStage: 2, trait: "determined", shots: 4, rlScore: 0.87, duration: 16, image: null },
-  { id: 3, title: "Trial by Fire", arcStage: 2, trait: "brave", shots: 3, rlScore: 0.91, duration: 14, image: null },
-  { id: 4, title: "The Warrior Rises", arcStage: 3, trait: "heroic", shots: 5, rlScore: 0.94, duration: 20, image: null },
+// ── Fallback data (shown before first generation) ──
+const DEFAULT_SCENES = [
+  { id: 1, title: "Waiting for story...", arcStage: 0, trait: "—", shots: 0, rlScore: 0, duration: 0 },
 ];
-
-const MOCK_CHARACTERS = [
-  { id: "elara_001", name: "Elara", role: "protagonist", arcStage: 2, styleLock: "anime_elf: silver hair, emerald eyes", trait: "determined" },
-  { id: "kai_002", name: "Kai", role: "rival", arcStage: 1, styleLock: "anime_warrior: dark hair, crimson eyes", trait: "hostile" },
-];
-
-const MOCK_RL = {
-  episode: 3, policyVersion: "v2", totalReward: 0.87,
-  coherence: 0.90, creativity: 0.82, consistency: 0.91, emotional: 0.85, technical: 0.78,
-  actions: [
-    { type: "add_particles", param: "density +15%", agent: "image" },
-    { type: "emotional_music", param: "intensity +20%", agent: "audio" },
-  ],
-  patterns: ["Slow-build arcs + particle glows → +15% reward", "Layered SFX + emotion sync → +12%"],
+const DEFAULT_CHARACTERS = [];
+const DEFAULT_RL = {
+  episode: 0, policyVersion: "—", totalReward: 0,
+  coherence: 0, creativity: 0, consistency: 0, emotional: 0, technical: 0,
+  actions: [], patterns: [],
 };
-
-const MOCK_PIPELINE = {
-  status: "processing",
+const DEFAULT_PIPELINE = {
+  status: "idle",
   stages: [
-    { name: "Story Analysis", status: "done", time: "2.1s" },
-    { name: "Character Dev", status: "done", time: "5.3s" },
-    { name: "Storyboard", status: "done", time: "3.8s" },
-    { name: "Keyframes", status: "processing", time: "12s", progress: 65 },
+    { name: "Story Analysis", status: "queued" },
+    { name: "Character Dev", status: "queued" },
+    { name: "RL Start", status: "queued" },
+    { name: "Storyboard", status: "queued" },
+    { name: "Keyframes", status: "queued" },
     { name: "Animation", status: "queued" },
     { name: "Audio", status: "queued" },
     { name: "RL Rewards", status: "queued" },
@@ -51,9 +40,62 @@ const MOCK_PIPELINE = {
 export default function Home() {
   const [showAssetLibrary, setShowAssetLibrary] = useState(false);
   const [showExport, setShowExport] = useState(false);
-  const [selectedScene, setSelectedScene] = useState(MOCK_SCENES[0]);
+  const [selectedScene, setSelectedScene] = useState(null);
   const [timelineCollapsed, setTimelineCollapsed] = useState(false);
   const [theme, setTheme] = useState("dark");
+  const [backendUp, setBackendUp] = useState(null);
+
+  // Real-time pipeline stream
+  const stream = useStream();
+
+  // Check backend health on mount
+  useEffect(() => {
+    fetch("http://localhost:8000/api/health")
+      .then((res) => res.ok && setBackendUp(true))
+      .catch(() => setBackendUp(false));
+  }, []);
+
+  // ── Derive live data from stream or fallback ──
+  const scenes = stream.result?.storyboard?.scenes?.map((s, i) => ({
+    id: s.scene_id || i + 1,
+    title: s.title || `Scene ${i + 1}`,
+    arcStage: s.arc_stage || 1,
+    trait: s.trait || "—",
+    shots: s.shots?.length || 0,
+    rlScore: stream.result?.rl_rewards?.total || 0,
+    duration: s.shots?.reduce((a, sh) => a + (sh.duration_seconds || 3), 0) || 0,
+  })) || DEFAULT_SCENES;
+
+  const characters = stream.result?.character_data?.character_sheets?.map((c) => ({
+    id: c.character_id,
+    name: c.name,
+    role: c.role,
+    arcStage: 1,
+    styleLock: c.style_lock || "",
+    trait: c.initial_state?.personality?.[0] || "—",
+  })) || DEFAULT_CHARACTERS;
+
+  const rlData = stream.result?.rl_rewards ? {
+    episode: stream.result.rl_rewards.composite?.episode || 1,
+    policyVersion: "v1",
+    totalReward: stream.result.rl_rewards.total || 0,
+    coherence: stream.result.rl_rewards.composite?.coherence || 0,
+    creativity: stream.result.rl_rewards.composite?.creativity || 0,
+    consistency: stream.result.rl_rewards.composite?.consistency || 0,
+    emotional: stream.result.rl_rewards.composite?.emotional_impact || 0,
+    technical: stream.result.rl_rewards.composite?.technical_quality || 0,
+    actions: [], patterns: [],
+  } : DEFAULT_RL;
+
+  // Build pipeline from stream stages
+  const pipeline = {
+    status: stream.status,
+    stages: DEFAULT_PIPELINE.stages.map((s) => {
+      const live = stream.stages.find((ls) => ls.stage === s.name);
+      if (live) return { ...s, status: live.status || "done", time: live.time };
+      return s;
+    }),
+  };
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -61,54 +103,88 @@ export default function Home() {
     document.documentElement.setAttribute("data-theme", next);
   };
 
+  const handleGenerate = (story) => {
+    stream.generate(story);
+  };
+
+  const handleFeedback = async (isPositive) => {
+    if (stream.jobId) {
+      await submitFeedback(stream.jobId, isPositive ? 5 : 2);
+    }
+  };
+
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
       <ParticleBackground />
 
-      {/* Header */}
+      {/* Backend status banner */}
+      {backendUp === false && (
+        <div style={{
+          background: "hsla(0,70%,50%,0.9)", color: "white",
+          padding: "6px 16px", fontSize: 12, textAlign: "center", zIndex: 100,
+        }}>
+          ⚠️ Backend not running. Start with: <code>python server.py</code>
+        </div>
+      )}
+
+      {/* Generation progress banner */}
+      {stream.status === "generating" && (
+        <div style={{
+          background: "hsla(263,70%,50%,0.9)", color: "white",
+          padding: "6px 16px", fontSize: 12, textAlign: "center", zIndex: 100,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}>
+          <div style={{
+            width: 12, height: 12, borderRadius: "50%",
+            border: "2px solid white", borderTopColor: "transparent",
+            animation: "spin 0.6s linear infinite",
+          }} />
+          {stream.currentStage || "Starting pipeline..."} — {stream.progress.toFixed(0)}%
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        </div>
+      )}
+
+      {stream.error && (
+        <div style={{
+          background: "hsla(0,70%,50%,0.9)", color: "white",
+          padding: "6px 16px", fontSize: 12, textAlign: "center", zIndex: 100,
+        }}>
+          ❌ {stream.error}
+        </div>
+      )}
+
       <Header
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenAssets={() => setShowAssetLibrary(true)}
         onOpenExport={() => setShowExport(true)}
-        rlData={MOCK_RL}
+        rlData={rlData}
       />
 
-      {/* Main Layout: Sidebar | Canvas | Right Panel */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <LeftSidebar
-          pipeline={MOCK_PIPELINE}
-          rlData={MOCK_RL}
-          characters={MOCK_CHARACTERS}
-        />
-
-        <CenterCanvas
-          scenes={MOCK_SCENES}
-          selectedScene={selectedScene}
-          rlData={MOCK_RL}
-          characters={MOCK_CHARACTERS}
-        />
-
+        <LeftSidebar pipeline={pipeline} rlData={rlData} characters={characters} />
+        <CenterCanvas scenes={scenes} selectedScene={selectedScene || scenes[0]} rlData={rlData} characters={characters} />
         <RightPanel
-          rlData={MOCK_RL}
-          characters={MOCK_CHARACTERS}
-          selectedScene={selectedScene}
+          rlData={rlData}
+          characters={characters}
+          selectedScene={selectedScene || scenes[0]}
+          onGenerate={handleGenerate}
+          onFeedback={handleFeedback}
+          isGenerating={stream.status === "generating"}
         />
       </div>
 
-      {/* Timeline Editor — bottom dock */}
       <TimelineEditor
-        scenes={MOCK_SCENES}
-        selectedScene={selectedScene}
+        scenes={scenes}
+        selectedScene={selectedScene || scenes[0]}
         onSelectScene={setSelectedScene}
         collapsed={timelineCollapsed}
         onToggleCollapse={() => setTimelineCollapsed(!timelineCollapsed)}
       />
 
-      {/* Modal Overlays */}
       <AnimatePresence>
-        {showAssetLibrary && <AssetLibrary onClose={() => setShowAssetLibrary(false)} />}
-        {showExport && <ExportPanel onClose={() => setShowExport(false)} pipeline={MOCK_PIPELINE} />}
+        {showAssetLibrary && <AssetLibrary onClose={() => setShowAssetLibrary(false)} jobId={stream.jobId} />}
+        {showExport && <ExportPanel onClose={() => setShowExport(false)} pipeline={pipeline} />}
       </AnimatePresence>
     </div>
   );
