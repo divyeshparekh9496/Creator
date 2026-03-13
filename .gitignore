@@ -1,0 +1,18 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Output data
+data/output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
