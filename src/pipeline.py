@@ -1,6 +1,12 @@
 """
-CreatorPipeline — enhanced orchestrator with Character Development Engine
-(Enhancement #1) integration across all stages.
+CreatorPipeline — enhanced with RL Self-Improvement Agent (Enhancement #2).
+
+The Master RL Agent:
+- Starts an episode per pipeline run
+- Selects parameter tweaks via policy
+- Computes composite rewards from Sub-RL agents
+- Persists learning to GCS
+- Augments interleaved output with RL metadata
 """
 import os
 import json
@@ -16,22 +22,27 @@ from src.agents.animation_agent import AnimationAgent
 from src.agents.audio_agent import AudioAgent
 from src.agents.scene_renderer import SceneRenderer
 from src.agents.editor_agent import EditorAgent
+from src.rl.master_agent import MasterRLAgent
 from src.config import DEFAULT_OUTPUT_DIR
 
 
 class CreatorPipeline:
     """
-    Enhanced orchestrator with Character Development Engine.
+    Full Creator pipeline with:
+    - Enhancement #1: Character Development Engine
+    - Enhancement #2: RL Self-Improvement Agent
 
-    Character state flows through ALL stages:
+    Pipeline (10 stages):
     1. Story Analysis
-    2. Character Development (sheets, arcs, style locks) ← runs BEFORE storyboard
-    3. Arc-Driven Storyboard
-    4. Keyframe Gen (with Visual Consistency Protocol)
-    5. Animation + Effects
-    6. Rich Audio (emotion-synced)
-    7. Interleaved Scene Rendering
-    8. Final Assembly
+    2. Character Development (sheets, arcs, style locks)
+    3. RL Episode Start + Action Selection
+    4. Arc-Driven Storyboard
+    5. Keyframe Gen (Visual Consistency Protocol)
+    6. Animation + Effects
+    7. Rich Audio (emotion-synced)
+    8. Interleaved Scene Rendering (RL-augmented)
+    9. RL Reward Computation + Policy Update
+    10. Final Assembly
     """
 
     def __init__(
@@ -47,6 +58,7 @@ class CreatorPipeline:
 
         agent_kwargs = {"genai_client": self.genai, "gcs": self.gcs}
 
+        # Core agents
         self.story_agent = StoryAgent(**agent_kwargs)
         self.character_agent = CharacterDevelopmentAgent(
             output_dir=os.path.join(output_dir, "characters"), **agent_kwargs
@@ -68,6 +80,13 @@ class CreatorPipeline:
             output_dir=output_dir, **agent_kwargs
         )
 
+        # RL Master Agent
+        self.rl_master = MasterRLAgent(
+            genai_client=self.genai,
+            gcs=self.gcs,
+            output_dir=os.path.join(output_dir, "rl"),
+        )
+
         self.state: Dict[str, Any] = {}
 
     def _save_state(self, stage: str, data: Any):
@@ -84,31 +103,34 @@ class CreatorPipeline:
             json.dump(serializable, f, indent=2)
 
     def run_full(self, story_text: str) -> Dict[str, Any]:
-        """Run the complete enhanced pipeline with character evolution."""
+        """Run the full RL-enhanced pipeline."""
         print("\n" + "═" * 60)
-        print("  🎬  CREATOR PIPELINE — Character Development Engine")
+        print("  🎬  CREATOR PIPELINE — RL Self-Improvement Engine")
         print("═" * 60 + "\n")
 
-        # Stage 1: Story Analysis
+        # ── Stage 1: Story Analysis ──
         print("━" * 50 + " Stage 1: Story Analysis")
         story = self.story_agent.run(story_text)
         self._save_state("story_analysis", story)
 
-        # Stage 2: Character Development (BEFORE storyboard)
-        print("━" * 50 + " Stage 2: Character Development Engine")
+        # ── Stage 2: Character Development Engine ──
+        print("━" * 50 + " Stage 2: Character Development")
         characters = self.character_agent.run(story)
         self._save_state("character_data", characters)
 
-        # Check for incomplete characters (zero-hallucination)
         warnings = characters.get("incomplete_warnings", [])
         if warnings:
             print("\n⚠️  CHARACTER DATA WARNINGS:")
             for w in warnings:
                 print(f"   {w}")
-            print()
 
-        # Stage 3: Arc-Driven Storyboard (character arcs inform scene structure)
-        print("━" * 50 + " Stage 3: Arc-Driven Storyboard")
+        # ── Stage 3: RL Episode Start ──
+        print("━" * 50 + " Stage 3: RL Episode Start")
+        episode = self.rl_master.start_episode()
+        episode.states.append({"stage": "init", "story_title": story.get("title", "")})
+
+        # ── Stage 4: Arc-Driven Storyboard ──
+        print("━" * 50 + " Stage 4: Storyboarding")
         storyboard_input = {
             **story,
             "character_arcs": characters.get("character_sheets", []),
@@ -117,25 +139,25 @@ class CreatorPipeline:
         storyboard = self.storyboard_agent.run(storyboard_input)
         self._save_state("storyboard", storyboard)
 
-        # Stage 4: Keyframes with Visual Consistency Protocol
-        print("━" * 50 + " Stage 4: Keyframe Generation (Consistency Protocol)")
+        # ── Stage 5: Keyframes (Visual Consistency Protocol) ──
+        print("━" * 50 + " Stage 5: Keyframe Generation")
         keyframes = self.image_agent.run({
             "storyboard": storyboard,
             "character_data": characters,
-            "character_agent": self.character_agent,  # Live ref for consistency blocks
+            "character_agent": self.character_agent,
         })
         self._save_state("keyframes", keyframes)
 
-        # Stage 5: Animation + Effects
-        print("━" * 50 + " Stage 5: Animation Planning")
+        # ── Stage 6: Animation + Effects ──
+        print("━" * 50 + " Stage 6: Animation Planning")
         animation = self.animation_agent.run({
             "keyframes": keyframes,
             "storyboard": storyboard,
         })
         self._save_state("animation_plan", animation)
 
-        # Stage 6: Rich Audio (emotion-synced via character data)
-        print("━" * 50 + " Stage 6: Audio Planning")
+        # ── Stage 7: Rich Audio ──
+        print("━" * 50 + " Stage 7: Audio Planning")
         audio = self.audio_agent.run({
             "animation_plan": animation,
             "storyboard": storyboard,
@@ -143,8 +165,18 @@ class CreatorPipeline:
         })
         self._save_state("audio_plan", audio)
 
-        # Stage 7: Interleaved Scene Rendering
-        print("━" * 50 + " Stage 7: Scene Rendering")
+        # ── Stage 8: RL Reward Computation ──
+        print("━" * 50 + " Stage 8: RL Reward Computation")
+        rewards = self.rl_master.compute_rewards(self.state)
+        self._save_state("rl_rewards", rewards)
+        episode.rewards.append(rewards)
+
+        # Select actions for next iteration
+        rl_actions = self.rl_master.select_actions(rewards)
+        episode.actions.extend([a.to_dict() for a in rl_actions])
+
+        # ── Stage 9: Interleaved Scene Rendering (RL-augmented) ──
+        print("━" * 50 + " Stage 9: Scene Rendering (RL-Augmented)")
         scenes = self.scene_renderer.run({
             "storyboard": storyboard,
             "character_data": characters,
@@ -152,15 +184,17 @@ class CreatorPipeline:
             "animation_plan": animation,
             "audio_plan": audio,
             "story_analysis": story,
-            "character_agent": self.character_agent,  # Live ref for evolution tracking
+            "character_agent": self.character_agent,
+            "rl_master": self.rl_master,
+            "rl_rewards": rewards,
         })
         self._save_state("scene_rendering", {
             "scenes": scenes.get("scenes", []),
             "output_path": scenes.get("output_path", ""),
         })
 
-        # Stage 8: Final Assembly
-        print("━" * 50 + " Stage 8: Final Assembly")
+        # ── Stage 10: Final Assembly ──
+        print("━" * 50 + " Stage 10: Final Assembly")
         final = self.editor_agent.run({
             "keyframes": keyframes,
             "animation_plan": animation,
@@ -168,15 +202,20 @@ class CreatorPipeline:
         })
         self._save_state("final_assembly", final)
 
-        # Save character evolution log
-        evolution_log = self.character_agent.get_evolution_log()
-        if evolution_log:
+        # ── RL Episode End ──
+        print("━" * 50 + " RL: Episode Complete")
+        self.rl_master.end_episode(episode)
+
+        # Save evolution log
+        evo_log = self.character_agent.get_evolution_log()
+        if evo_log:
             evo_path = os.path.join(self.output_dir, "character_evolution_log.json")
             with open(evo_path, "w") as f:
-                json.dump(evolution_log, f, indent=2)
+                json.dump(evo_log, f, indent=2)
 
         print("\n" + "═" * 60)
-        print("  ✅  ENHANCED PIPELINE COMPLETE")
+        print(f"  ✅  PIPELINE COMPLETE — RL Reward: {rewards.get('total', 0):.3f}")
+        print(f"  📈  Policy: {self.rl_master.policy_version} | Episode: {self.rl_master.episode_count}")
         print("═" * 60 + "\n")
 
         return self.state
@@ -198,3 +237,17 @@ class CreatorPipeline:
         result = agent.run(input_data)
         self._save_state(stage_name, result)
         return result
+
+    def get_user_feedback(self, rating: int):
+        """Accept user feedback (1-5) to feed into RLHF."""
+        if self.rl_master.episodes:
+            episode = self.rl_master.episodes[-1]
+            if episode.rewards:
+                from src.rl.reward_system import RewardScore
+                last_reward = episode.rewards[-1]
+                score = RewardScore(**{
+                    k: v for k, v in last_reward.get("composite", {}).items()
+                    if k in ["coherence", "creativity", "consistency", "emotional_impact", "technical_quality"]
+                })
+                score = self.rl_master.reward_evaluator.apply_user_feedback(score, rating)
+                print(f"[RLHF] User rating: {rating}/5 → bonus: {score.user_bonus}")

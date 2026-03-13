@@ -1,106 +1,94 @@
 # Creator 🎬
 
-A **creative-director-style AI system** that converts stories into **anime-style animated sequences** with **deep character development**, rich animations, dynamic sounds, and special effects.
+A **self-evolving creative-director AI** that converts stories into **anime-style animated sequences** with deep character development, rich effects, and RL-driven self-improvement.
 
-Built with **Gemini 3.1**, **Nano Banana 2** (image gen), **Google GenAI SDK**, and **Google Cloud Storage**.
+Built with **Gemini 3.1**, **Nano Banana 2**, **Google GenAI SDK**, **Google Cloud Storage**, and **SAGE-inspired RL**.
 
 ## Architecture
 
 ```
-User Story → StoryAgent → CharacterDevelopmentAgent → StoryboardAgent
+User Story → StoryAgent → CharacterDevelopmentAgent → [RL Episode Start]
                                      ↓
-            EditorAgent ← SceneRenderer ← AudioAgent ← AnimationAgent ← ImageAgent
-                 ↓
-          Final Anime Episode
+StoryboardAgent → ImageAgent → AnimationAgent → AudioAgent
+                                     ↓
+               [RL Reward Computation] → SceneRenderer → EditorAgent
+                                     ↓
+                           [RL Policy Update] → Final Anime
 ```
 
-### Agent Pipeline (8 Stages)
+### Pipeline (10 Stages)
 
-| # | Agent | Model | Purpose |
-|---|-------|-------|---------|
-| 1 | **StoryAgent** | `gemini-2.0-flash` | Narrative → beats, characters, setting |
-| 2 | **CharacterDevelopmentAgent** | `gemini-3-pro-image-preview` | Deep arcs, visual evolution, emotion state |
-| 3 | **StoryboardAgent** | `gemini-2.0-flash` | Arc-driven shots + effects + motion hints |
-| 4 | **ImageAgent** | `gemini-3.1-flash-image-preview` | AnimeGANv2-styled keyframes + particles |
-| 5 | **AnimationAgent** | `gemini-2.0-flash` | Animate Anyone motion + effects metadata |
-| 6 | **AudioAgent** | `gemini-2.0-flash` | Layered SFX + emotion-synced music |
-| 7 | **SceneRenderer** | — | Interleaved output per scene |
-| 8 | **EditorAgent** | `ffmpeg` | Video assembly + final merge |
+| # | Stage | Agent/Component | Purpose |
+|---|-------|----------------|---------|
+| 1 | Story | `StoryAgent` | Narrative → beats, characters, setting |
+| 2 | Characters | `CharacterDevelopmentAgent` | Deep arcs, style locks, evolution |
+| 3 | RL Start | `MasterRLAgent` | Episode init + policy-based action selection |
+| 4 | Storyboard | `StoryboardAgent` | Arc-driven shots + effects + motion hints |
+| 5 | Keyframes | `ImageAgent` | AnimeGANv2 + Visual Consistency Protocol |
+| 6 | Animation | `AnimationAgent` | Animate Anyone motion + particles |
+| 7 | Audio | `AudioAgent` | Layered SFX + emotion-synced music |
+| 8 | RL Rewards | `MasterRLAgent` | Composite scoring + Sub-RL evaluation |
+| 9 | Scenes | `SceneRenderer` | RL-augmented interleaved output |
+| 10 | Assembly | `EditorAgent` | Video merge + GCS upload |
 
-### Key Features
+### Enhancement #1: Character Development Engine
+- **Character sheets**: `initial_state`, `arc_stages`, `style_lock`
+- **Visual Consistency Protocol**: Every image prompt includes sheet ref + arc stage + style anchor
+- **Zero-hallucination**: Flags `incomplete_fields` instead of inventing data
 
-- **Character Development Engine** — Backstories, arc stages, visual evolution per scene
-- **AnimeGANv2 Style** — Consistent anime style across all generated frames
-- **Animate Anyone Motion** — Pose-guided smooth transitions and motion hints
-- **FLUX.1 Consistency** — Visual anchoring across frames via reference images
-- **Rich Audio** — Layered SFX (Audacity/LMMS patterns) synced to character emotions
-- **Interleaved Output** — Per-scene stream of narration + image + audio + effects + metadata
+### Enhancement #2: RL Self-Improvement Agent (SAGE-Inspired)
+- **Master RL**: Coordinates 4 Sub-RL agents, selects parameter tweaks, evolves policy
+- **Composite Reward**: `0.3×Coherence + 0.25×Creativity + 0.2×Consistency + 0.15×Emotional + 0.1×Technical`
+- **Sub-RL Agents**: Character RL, Visual RL, Audio RL, Sequence RL
+- **RLHF**: User ratings (1-5) feed as reward bonus/penalty
+- **Policy Evolution**: Learns high-reward patterns, auto-evolves policy version
 
 ### Open-Source Inspirations
 
-| Feature | Reference | Integration |
-|---------|-----------|-------------|
-| Character Sheets | LlamaGenAI, dtoyoda10/anime-gen | JSON profiles for prompts |
-| Animation | humanaigc/animate-anyone | Pose/motion guidance |
-| Style Transfer | TachibanaYoshino/AnimeGANv2 | Style prefix on prompts |
-| Consistency | FLUX.1 Kontext | Reference image anchoring |
-| Audio/SFX | Audacity/LMMS patterns | Procedural descriptions |
+| Feature | Reference |
+|---------|-----------|
+| RL Framework | SAGE (arXiv:2512.17102), ElegantRL |
+| Animation | Animate Anyone (humanaigc) |
+| Style | AnimeGANv2 (TachibanaYoshino) |
+| Consistency | FLUX.1 Kontext |
+| Audio | Audacity/LMMS patterns |
 
 ## Quick Start
 
 ```bash
-# 1. Clone and install
 git clone https://github.com/divyeshparekh9496/Creator.git
 cd Creator
 pip install -r requirements.txt
-
-# 2. Configure API key
-cp .env.example .env
-# Edit .env → set GOOGLE_API_KEY
-
-# 3. Run
-python main.py --story "A lone samurai walks through a cherry blossom forest at dawn"
+cp .env.example .env  # Set GOOGLE_API_KEY
+python main.py --story "A lone samurai walks through a cherry blossom forest"
 ```
 
-## Output Structure
+## Output
 
 ```
 data/output/
-├── characters/          # Character sheets + profiles JSON + arc data
-├── keyframes/           # AnimeGANv2-styled keyframe images
-├── animation/           # Animation plan with effects metadata
-├── audio/               # Audio plan with layered SFX
-├── scenes/              # Per-scene interleaved output
-│   ├── interleaved_output.txt
-│   └── scenes_data.json
-├── parts/               # Rendered video parts
-├── final/               # Merged final episode
-└── pipeline_state.json
+├── characters/          # Sheets + profiles + arc data
+├── keyframes/           # AnimeGANv2-styled frames
+├── animation/           # Animation plan + effects
+├── audio/               # Audio plan + SFX
+├── scenes/              # RL-augmented interleaved output
+├── rl/                  # Policy, episodes, reward logs
+├── pipeline_state.json
+└── character_evolution_log.json
 ```
 
-## Interleaved Output Format
+## RL-Augmented Output Format
 
-Each scene produces:
 ```
-Scene 2 — Forest Clearing (dusk)
-  Shot 1 (close-up) — 5s
-  📖 Narration: "For the first time, Akira felt the weight of her choice..."
-  🎬 Action: Akira looks at the setting sun
-  👤 Character Update: Akira — emotion: doubt and resolve — visual: scar deepens
-  🖼️  Image: data/output/keyframes/scene02_shot01.png
-  🎥 Motion: slow zoom-in — subtle breathing + wind-blown hair
-  ✨ Effects: particles: cherry_blossoms + lighting: golden hour rim light
-  🔊 Audio sync: emotion=contemplative
-  📋 Metadata: {"scene":2, "shot":1, "duration":5, "char_arc":"doubt_resolve"}
+SCENE 2 – RL-Enhanced | Akira Arc Stage 2
+🤖 RL State: Episode 3, Policy v2
+  👤 Character Evolution: Akira: stage 2 (determined), visual: raised chin (Sub-RL: 0.85)
+  📖 Narration: "For the first time, she felt the weight of her choice..."
+  🖼️  Image: [Nano Banana 2: ...] + RL Action: add_particles (+0.15)
+  🔊 Audio: [building drums, brass entering] + RL Action: emotional_music (+0.20)
+  📊 RL Reward Preview: Coherence=0.90, Total=0.87
+  📋 Metadata: {"rl_episode": 3, "policy_version": "v2", ...}
 ```
-
-## Tech Stack
-
-- **Gemini 3.1** (Nano Banana 2 / Pro) — Image generation
-- **Google GenAI SDK** — Model calls & interleaved output
-- **Google Cloud Storage** — Asset storage
-- **ffmpeg** — Video assembly
-- **Python 3.10+**
 
 ## License
 
