@@ -1,36 +1,67 @@
-from .base_agent import BaseAgent
-from typing import Dict, Any, List
+"""
+StoryAgent — narrative understanding, cleansing, and structuring.
+Converts raw story input into structured beats via Gemini.
+"""
+import json
+from typing import Dict, Any
+
+from src.agents.base_agent import BaseAgent
+from src.config import MODEL_FLASH_TEXT
+
+STORY_SYSTEM_PROMPT = """You are a professional anime story analyst. Given a story or text input,
+you must return a JSON object with the following structure:
+
+{
+  "title": "Suggested anime title",
+  "beats": [
+    {"id": 1, "description": "Beat description", "mood": "Mood keyword"}
+  ],
+  "characters": [
+    {"name": "Character name", "role": "protagonist/antagonist/supporting",
+     "description": "Visual and personality description",
+     "key_traits": ["trait1", "trait2"]}
+  ],
+  "setting": {
+    "world": "World description",
+    "time_period": "Time period",
+    "locations": ["Location 1", "Location 2"]
+  },
+  "mood": "Overall mood",
+  "genre": "Genre classification (e.g., action, romance, sci-fi)",
+  "episode_structure": {
+    "format": "TV series / OVA / Movie",
+    "episode_count": 3,
+    "episodes": [
+      {"number": 1, "title": "Episode title", "summary": "Episode summary",
+       "beats": [1, 2]}
+    ]
+  }
+}
+
+Return ONLY valid JSON. No markdown, no explanation. Keep beats to 3-5 items.
+Keep characters to the main cast (max 5). Be creative with the title."""
+
 
 class StoryAgent(BaseAgent):
     """
-    Agent responsible for narrative understanding, cleansing, and structuring.
-    Converts raw story input into 3-5 clear narrative beats.
+    Agent 1: Narrative understanding and structuring.
+    Input:  raw story text (str)
+    Output: structured beats, characters, setting, mood, genre, episode structure
     """
-    
-    def __init__(self, model_name: str = "gemini-2.0-flash"):
-        super().__init__(name="StoryAgent", model_name=model_name)
+
+    def __init__(self, **kwargs):
+        super().__init__(name="StoryAgent", **kwargs)
 
     def run(self, story_text: str) -> Dict[str, Any]:
-        self.log(f"Analyzing story: {story_text[:50]}...")
-        
-        # In a real implementation, this would call Gemini 3 via Google GenAI SDK
-        # For now, we return a structured skeleton
-        beats = [
-            {"id": 1, "description": "Introduction to the world and protagonist.", "mood": "Mysterious"},
-            {"id": 2, "description": "The inciting incident that changes everything.", "mood": "Tense"},
-            {"id": 3, "description": "Rising action as the stakes increase.", "mood": "Action"},
-            {"id": 4, "description": "The climax of the sequence.", "mood": "Epic"},
-            {"id": 5, "description": "Resolution and setup for the next sequence.", "mood": "Calm"}
-        ]
-        
-        result = {
-            "beats": beats,
-            "metadata": {
-                "source": "text",
-                "char_count": len(story_text),
-                "suggested_style": "Shonen-style, high contrast"
-            }
-        }
-        
-        self.log("Story analysis complete.")
+        self.log(f"Analyzing story ({len(story_text)} chars)...")
+
+        prompt = f"Analyze this story and return structured JSON:\n\n{story_text}"
+
+        result = self.genai.generate_json(
+            prompt=prompt,
+            model=MODEL_FLASH_TEXT,
+            system_instruction=STORY_SYSTEM_PROMPT,
+        )
+
+        self.log(f"Story analysis complete — title: {result.get('title', 'Untitled')}")
         return result
