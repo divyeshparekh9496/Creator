@@ -1,6 +1,6 @@
 """
-CreatorPipeline — enhanced orchestrator with character evolution state
-and per-scene interleaved rendering.
+CreatorPipeline — enhanced orchestrator with Character Development Engine
+(Enhancement #1) integration across all stages.
 """
 import os
 import json
@@ -21,18 +21,17 @@ from src.config import DEFAULT_OUTPUT_DIR
 
 class CreatorPipeline:
     """
-    Enhanced orchestrator — chains all Creator agents with character
-    evolution state flowing across the entire pipeline.
+    Enhanced orchestrator with Character Development Engine.
 
-    Pipeline:
-      1. Story Analysis    →  beats, characters, setting
-      2. Character Dev     →  deep arcs, visual evolution, emotion states
-      3. Storyboarding     →  arc-driven shots with effects + motion hints
-      4. Keyframe Gen      →  AnimeGANv2-styled frames with Animate Anyone motion
-      5. Animation Plan    →  particle systems, effects, transitions
-      6. Audio Plan        →  layered SFX, emotion-synced music
-      7. Scene Rendering   →  per-scene interleaved output (NEW)
-      8. Final Assembly    →  video parts + merged episode
+    Character state flows through ALL stages:
+    1. Story Analysis
+    2. Character Development (sheets, arcs, style locks) ← runs BEFORE storyboard
+    3. Arc-Driven Storyboard
+    4. Keyframe Gen (with Visual Consistency Protocol)
+    5. Animation + Effects
+    6. Rich Audio (emotion-synced)
+    7. Interleaved Scene Rendering
+    8. Final Assembly
     """
 
     def __init__(
@@ -49,10 +48,10 @@ class CreatorPipeline:
         agent_kwargs = {"genai_client": self.genai, "gcs": self.gcs}
 
         self.story_agent = StoryAgent(**agent_kwargs)
-        self.storyboard_agent = StoryboardAgent(**agent_kwargs)
         self.character_agent = CharacterDevelopmentAgent(
             output_dir=os.path.join(output_dir, "characters"), **agent_kwargs
         )
+        self.storyboard_agent = StoryboardAgent(**agent_kwargs)
         self.image_agent = ImageAgent(
             output_dir=os.path.join(output_dir, "keyframes"), **agent_kwargs
         )
@@ -85,9 +84,9 @@ class CreatorPipeline:
             json.dump(serializable, f, indent=2)
 
     def run_full(self, story_text: str) -> Dict[str, Any]:
-        """Run the complete enhanced pipeline from story to final anime."""
+        """Run the complete enhanced pipeline with character evolution."""
         print("\n" + "═" * 60)
-        print("  🎬  CREATOR PIPELINE — Enhanced with Character Development")
+        print("  🎬  CREATOR PIPELINE — Character Development Engine")
         print("═" * 60 + "\n")
 
         # Stage 1: Story Analysis
@@ -95,23 +94,35 @@ class CreatorPipeline:
         story = self.story_agent.run(story_text)
         self._save_state("story_analysis", story)
 
-        # Stage 2: Character Development Engine
-        print("━" * 50 + " Stage 2: Character Development")
+        # Stage 2: Character Development (BEFORE storyboard)
+        print("━" * 50 + " Stage 2: Character Development Engine")
         characters = self.character_agent.run(story)
         self._save_state("character_data", characters)
 
-        # Stage 3: Arc-Driven Storyboard
-        print("━" * 50 + " Stage 3: Storyboarding")
-        # Merge story + character data for arc-driven scenes
-        storyboard_input = {**story, "character_arcs": characters.get("character_sheets", [])}
+        # Check for incomplete characters (zero-hallucination)
+        warnings = characters.get("incomplete_warnings", [])
+        if warnings:
+            print("\n⚠️  CHARACTER DATA WARNINGS:")
+            for w in warnings:
+                print(f"   {w}")
+            print()
+
+        # Stage 3: Arc-Driven Storyboard (character arcs inform scene structure)
+        print("━" * 50 + " Stage 3: Arc-Driven Storyboard")
+        storyboard_input = {
+            **story,
+            "character_arcs": characters.get("character_sheets", []),
+            "consistency_notes": characters.get("consistency_notes", ""),
+        }
         storyboard = self.storyboard_agent.run(storyboard_input)
         self._save_state("storyboard", storyboard)
 
-        # Stage 4: Enhanced Keyframes
-        print("━" * 50 + " Stage 4: Keyframe Generation")
+        # Stage 4: Keyframes with Visual Consistency Protocol
+        print("━" * 50 + " Stage 4: Keyframe Generation (Consistency Protocol)")
         keyframes = self.image_agent.run({
             "storyboard": storyboard,
             "character_data": characters,
+            "character_agent": self.character_agent,  # Live ref for consistency blocks
         })
         self._save_state("keyframes", keyframes)
 
@@ -123,7 +134,7 @@ class CreatorPipeline:
         })
         self._save_state("animation_plan", animation)
 
-        # Stage 6: Rich Audio
+        # Stage 6: Rich Audio (emotion-synced via character data)
         print("━" * 50 + " Stage 6: Audio Planning")
         audio = self.audio_agent.run({
             "animation_plan": animation,
@@ -132,7 +143,7 @@ class CreatorPipeline:
         })
         self._save_state("audio_plan", audio)
 
-        # Stage 7: Interleaved Scene Rendering (NEW)
+        # Stage 7: Interleaved Scene Rendering
         print("━" * 50 + " Stage 7: Scene Rendering")
         scenes = self.scene_renderer.run({
             "storyboard": storyboard,
@@ -141,6 +152,7 @@ class CreatorPipeline:
             "animation_plan": animation,
             "audio_plan": audio,
             "story_analysis": story,
+            "character_agent": self.character_agent,  # Live ref for evolution tracking
         })
         self._save_state("scene_rendering", {
             "scenes": scenes.get("scenes", []),
@@ -155,6 +167,13 @@ class CreatorPipeline:
             "audio_plan": audio,
         })
         self._save_state("final_assembly", final)
+
+        # Save character evolution log
+        evolution_log = self.character_agent.get_evolution_log()
+        if evolution_log:
+            evo_path = os.path.join(self.output_dir, "character_evolution_log.json")
+            with open(evo_path, "w") as f:
+                json.dump(evolution_log, f, indent=2)
 
         print("\n" + "═" * 60)
         print("  ✅  ENHANCED PIPELINE COMPLETE")

@@ -1,17 +1,18 @@
 """
-CharacterDevelopmentAgent — deep character arc tracking, visual evolution, and emotion state.
+CharacterDevelopmentAgent — Enhancement #1: Character Development Engine.
 
-Builds evolving characters with backstories, motivations, and visual/emotional changes
-across scenes. Outputs character sheets as JSON profiles and reference images.
+Dedicated sub-agent that activates BEFORE storyboard generation and persists
+ACROSS all scenes. Produces and tracks character sheets with arc stages,
+visual evolution, style locks, and zero-hallucination safeguards.
 
-Open-source inspirations:
-- LlamaGenAI/LlamaGen, dtoyoda10/anime-gen: JSON character sheet patterns
-- FLUX.1 Kontext: Embedding consistency for visual anchoring
-- AnimeGANv2: Style-locked character rendering
+Open-source references:
+- LlamaGenAI/LlamaGen, dtoyoda10/anime-gen: JSON character sheet format
+- Animate Anyone (humanaigc): Pose-guided visual consistency
+- AnimeGANv2 (TachibanaYoshino): Style anchors in every prompt
+- FLUX.1 Kontext: Embedding consistency for visual locking
 """
 import os
 import json
-import copy
 from typing import Dict, Any, List, Optional
 from PIL import Image
 
@@ -19,132 +20,140 @@ from src.agents.base_agent import BaseAgent
 from src.config import MODEL_PRO_IMAGE, MODEL_FLASH_TEXT, DEFAULT_ASPECT_RATIO, DEFAULT_IMAGE_SIZE
 
 
-CHARACTER_SYSTEM_PROMPT = """You are an anime character designer and narrative psychologist.
-Given a story analysis, create DEEP character profiles with arcs, backstories, and evolution.
+CHARACTER_SHEET_SYSTEM_PROMPT = """You are an anime character development specialist.
+For EVERY named character in the story, create a production-ready character sheet.
 
-Return a JSON object:
+ZERO HALLUCINATION RULE:
+- Base ALL character details on the explicit story input.
+- If character details are missing, set "incomplete_fields" with what you need.
+- Never invent arcs not supported by the story beats.
+- Track EVERY change in JSON metadata.
+
+Return a JSON object with this EXACT structure:
 {
   "characters": [
     {
-      "id": "char_001",
+      "character_id": "unique_snake_case_id",
       "name": "Character Name",
-      "role": "protagonist/antagonist/supporting",
-      "backstory": "2-3 sentence backstory that drives their motivation",
-      "motivation": "What they want and why",
-      "personality": ["brave but doubtful", "secretly kind"],
-      "arc": {
-        "stages": ["naive", "doubtful", "determined", "heroic"],
-        "current_stage": 0,
-        "arc_description": "From innocent youth to reluctant hero"
+      "role": "protagonist/antagonist/sidekick/supporting",
+      "initial_state": {
+        "personality": ["trait1", "trait2", "trait3"],
+        "visual_traits": ["slender build", "wide eyes", "specific features"],
+        "skills": ["skill1 (level)", "skill2"],
+        "motivations": ["primary goal", "secondary goal"],
+        "flaws": ["flaw1", "flaw2"]
       },
-      "visual_traits": {
-        "base": {
-          "hair": "blue, shoulder-length, slightly messy",
-          "eyes": "amber, wide and expressive",
-          "build": "slim, athletic",
-          "outfit": "worn traveler's cloak over leather armor",
-          "distinguishing_features": ["small scar on left cheek"]
-        },
-        "evolution": [
-          {
-            "trigger_scene": 1,
-            "changes": "Scar is fresh and red, eyes are bright with innocence"
-          },
-          {
-            "trigger_scene": 3,
-            "changes": "Scar deepens, eyes grow sharper, cloak is torn"
-          },
-          {
-            "trigger_scene": 5,
-            "changes": "Scar fades to silver, eyes burn with resolve, new armor"
-          }
-        ]
-      },
-      "emotional_states": {
-        "default": "cautiously optimistic",
+      "backstory": "2-3 sentence backstory grounded in the story",
+      "arc_stages": [
+        {"stage": 1, "trait": "initial_trait", "visual_change": "specific visual for this stage"},
+        {"stage": 2, "trait": "mid_trait", "visual_change": "what changes visually"},
+        {"stage": 3, "trait": "final_trait", "visual_change": "final visual state"}
+      ],
+      "style_lock": "anime_[type]: [hair], [eyes], [distinctive visual anchors]",
+      "voice_style": "tone description for audio agent",
+      "emotional_range": {
+        "default": "baseline emotion",
         "per_scene": [
-          {"scene_id": 1, "emotion": "wonder and fear", "intensity": 0.6},
-          {"scene_id": 3, "emotion": "doubt and anger", "intensity": 0.9},
-          {"scene_id": 5, "emotion": "resolve and calm power", "intensity": 0.8}
+          {"scene_id": 1, "emotion": "emotion_name", "intensity": 0.7}
         ]
       },
       "relationships": [
-        {"with": "Other Character", "type": "rival-turned-ally", "evolution": "distrust→respect"}
+        {"with": "Other Character", "type": "relationship_type", "evolution": "start→end"}
       ],
-      "voice_style": "young, earnest, cracks under pressure"
+      "incomplete_fields": []
     }
   ],
-  "art_style": "AnimeGANv2-style: cel-shaded, high-contrast lighting, vivid colors, detailed linework"
+  "art_style": "AnimeGANv2 style: [specific style description]",
+  "consistency_notes": "Key visual anchors that must persist across ALL frames"
 }
 
-Return ONLY valid JSON. Create rich, evolving characters. Max 5 characters."""
-
-
-VISUAL_EVOLUTION_PROMPT = """You are tracking a character's visual evolution across scenes.
-Given the character's current state and scene context, describe EXACTLY how they should
-look in this scene, including any changes from their base design.
-
-Return JSON:
-{
-  "character_id": "char_001",
-  "scene_id": 1,
-  "visual_state": "Full visual description for this specific scene",
-  "emotion_display": "How their current emotion shows physically",
-  "effects": ["glow_aura", "wind_hair", "shadow_cast"],
-  "consistency_anchors": ["blue hair", "amber eyes", "scar position"]
-}
-
-Return ONLY valid JSON."""
+Return ONLY valid JSON. Create sheets for ALL named characters (max 5).
+If any character lacks sufficient story detail, list missing fields in "incomplete_fields"."""
 
 
 class CharacterDevelopmentAgent(BaseAgent):
     """
-    Enhanced Character Agent with deep arc tracking and visual evolution.
+    Enhancement #1: Character Development Engine.
 
-    Features:
-    - Backstory and motivation generation
-    - Arc stages tracked across scenes
-    - Visual trait evolution (e.g., "scar deepens post-battle")
-    - Emotional state per scene → feeds into Audio and Image agents
-    - Consistency anchors for visual locking (FLUX.1 / ReferenceNet inspired)
+    Activates BEFORE storyboard generation. Persists ACROSS all scenes.
+
+    Core features:
+    - Character sheet generation with exact JSON format
+    - Arc stage tracking with visual evolution per scene
+    - Style lock anchors for visual consistency protocol
+    - Zero-hallucination safeguards (flags incomplete data)
+    - Evolution output: "Character [name] evolution: [trait] → [next], visual: [change]"
     """
 
     def __init__(self, output_dir: str = "data/output/characters", **kwargs):
         super().__init__(name="CharacterDevelopmentAgent", **kwargs)
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
-        # Evolution state persists across scenes
-        self._evolution_state: Dict[str, Any] = {}
+
+        # Persistent state across scenes
+        self._sheets: Dict[str, Dict] = {}       # character_id → sheet
+        self._current_stages: Dict[str, int] = {} # character_id → current arc stage
+        self._evolution_log: List[Dict] = []       # chronological evolution entries
+
+    @property
+    def sheets(self) -> Dict[str, Dict]:
+        return self._sheets
 
     def run(self, story_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Phase 1: Generate deep character profiles from story analysis.
-        Returns character sheets with arcs, visual evolution plans, and reference images.
+        Phase 1: Generate character sheets from story analysis.
+        Runs BEFORE storyboard generation.
         """
-        self.log("Building Character Development Engine...")
+        self.log("═══ Character Development Engine: Generating Sheets ═══")
 
         prompt = (
-            "Create deep character profiles with arcs and visual evolution for:\n\n"
+            "Create production-ready character sheets for ALL named characters:\n\n"
             f"{json.dumps(story_analysis, indent=2)}"
         )
 
         profiles = self.genai.generate_json(
             prompt=prompt,
             model=MODEL_FLASH_TEXT,
-            system_instruction=CHARACTER_SYSTEM_PROMPT,
+            system_instruction=CHARACTER_SHEET_SYSTEM_PROMPT,
         )
 
         characters = profiles.get("characters", [])
-        style = profiles.get("art_style", "AnimeGANv2-style: cel-shaded, high-contrast")
+        style = profiles.get("art_style", "AnimeGANv2 style: cel-shaded, high-contrast")
 
-        # Generate reference sheet for each character
-        sheets = []
+        # Zero-hallucination check
+        incomplete_chars = []
         for char in characters:
-            name = char.get("name", "Unknown")
-            char_id = char.get("id", name.lower().replace(" ", "_"))
-            self.log(f"  Designing: {name} (arc: {char.get('arc', {}).get('arc_description', 'N/A')})")
+            missing = char.get("incomplete_fields", [])
+            if missing:
+                incomplete_chars.append(
+                    f"Character '{char.get('name')}' sheet incomplete. "
+                    f"Need: {', '.join(missing)}"
+                )
+        if incomplete_chars:
+            self.log("⚠️  INCOMPLETE CHARACTER DATA:")
+            for msg in incomplete_chars:
+                self.log(f"   {msg}")
 
+        # Store sheets and initialize tracking
+        sheets_output = []
+        for char in characters:
+            char_id = char.get("character_id", char.get("name", "unknown").lower().replace(" ", "_"))
+            char["character_id"] = char_id
+            self._sheets[char_id] = char
+            self._current_stages[char_id] = 1  # Start at stage 1
+
+            name = char.get("name", "Unknown")
+            arc_stages = char.get("arc_stages", [])
+            style_lock = char.get("style_lock", "")
+
+            self.log(f"  📋 Sheet created: {name} ({char_id})")
+            self.log(f"     Role: {char.get('role')}")
+            self.log(f"     Arc: {' → '.join(s.get('trait', '') for s in arc_stages)}")
+            self.log(f"     Style lock: {style_lock}")
+
+            # Generate reference image
             sheet_prompt = self._build_sheet_prompt(char, style)
+            local_path, gcs_path = None, None
 
             try:
                 image = self.genai.generate_image(
@@ -153,129 +162,159 @@ class CharacterDevelopmentAgent(BaseAgent):
                     aspect_ratio=DEFAULT_ASPECT_RATIO,
                     image_size=DEFAULT_IMAGE_SIZE,
                 )
-
-                local_path = None
-                gcs_path = None
                 if image:
-                    safe_name = char_id
-                    local_path = os.path.join(self.output_dir, f"{safe_name}_sheet.png")
+                    local_path = os.path.join(self.output_dir, f"{char_id}_sheet.png")
                     image.save(local_path)
-                    gcs_path = f"characters/{safe_name}/sheet.png"
+                    gcs_path = f"characters/{char_id}/sheet.png"
                     self.gcs.upload_blob(local_path, gcs_path)
-                    self.log(f"  Sheet saved: {local_path}")
-
-                sheets.append({
-                    **char,
-                    "local_path": local_path,
-                    "gcs_path": gcs_path,
-                    "sheet_prompt": sheet_prompt,
-                })
-
+                    self.log(f"     Image saved: {local_path}")
             except Exception as e:
-                self.log(f"  Error generating {name}: {e}")
-                sheets.append({**char, "local_path": None, "error": str(e)})
+                self.log(f"     Image error: {e}")
 
-            # Initialize evolution state
-            self._evolution_state[char_id] = {
-                "current_arc_stage": 0,
-                "visual_changes_applied": [],
-                "emotion_history": [],
-            }
+            sheets_output.append({
+                **char,
+                "local_path": local_path,
+                "gcs_path": gcs_path,
+            })
 
-        # Save character profiles JSON
+        # Save all sheets to JSON
         profiles_path = os.path.join(self.output_dir, "character_profiles.json")
-        serializable_sheets = []
-        for s in sheets:
-            s_copy = {k: v for k, v in s.items() if k != "local_path" or v is None or isinstance(v, str)}
-            serializable_sheets.append(s_copy)
         with open(profiles_path, "w") as f:
-            json.dump({"characters": serializable_sheets, "art_style": style}, f, indent=2)
-
-        # Upload arc data to GCS
+            json.dump({
+                "characters": characters,
+                "art_style": style,
+                "consistency_notes": profiles.get("consistency_notes", ""),
+            }, f, indent=2)
         self.gcs.upload_blob(profiles_path, "characters/profiles.json")
 
-        self.log(f"Character Development complete — {len(sheets)} characters with arcs")
+        self.log(f"═══ Character Development complete — {len(sheets_output)} sheets ═══")
         return {
-            "character_sheets": sheets,
+            "character_sheets": sheets_output,
             "style": style,
-            "evolution_state": self._evolution_state,
+            "consistency_notes": profiles.get("consistency_notes", ""),
+            "incomplete_warnings": incomplete_chars,
         }
 
-    def get_scene_state(
-        self, char_id: str, scene_id: int, scene_context: str
-    ) -> Dict[str, Any]:
+    def get_visual_consistency_block(self, char_id: str) -> str:
         """
-        Get a character's visual and emotional state for a specific scene.
-        Updates the evolution state and returns scene-specific rendering instructions.
+        Visual Consistency Protocol — returns the mandatory prompt block
+        that MUST be included in every image generation call.
+
+        Format:
+          "Character: [name] from sheet [character_id]"
+          "Current arc stage: [stage] visual traits: [changes]"
+          "Style anchor: [style_lock]"
         """
-        char_data = None
-        for sheet in self._evolution_state.get("_sheets", []):
-            if sheet.get("id") == char_id:
-                char_data = sheet
+        sheet = self._sheets.get(char_id)
+        if not sheet:
+            return ""
+
+        name = sheet.get("name", "Unknown")
+        stage_num = self._current_stages.get(char_id, 1)
+        style_lock = sheet.get("style_lock", "")
+
+        # Get current stage visual traits
+        arc_stages = sheet.get("arc_stages", [])
+        visual_traits = ""
+        trait = ""
+        for s in arc_stages:
+            if s.get("stage") == stage_num:
+                visual_traits = s.get("visual_change", "")
+                trait = s.get("trait", "")
                 break
 
-        if not char_data:
-            return {"character_id": char_id, "scene_id": scene_id, "visual_state": "default"}
-
-        prompt = (
-            f"Character: {json.dumps(char_data, indent=2)}\n"
-            f"Scene {scene_id} context: {scene_context}\n"
-            f"Previous changes: {json.dumps(self._evolution_state.get(char_id, {}))}\n"
-            f"Describe their exact visual state for this scene."
+        return (
+            f"Character: {name} from sheet {char_id}, "
+            f"Current arc stage: {stage_num} ({trait}) "
+            f"visual traits: {visual_traits}, "
+            f"Style anchor: {style_lock}"
         )
 
-        try:
-            result = self.genai.generate_json(
-                prompt=prompt,
-                model=MODEL_FLASH_TEXT,
-                system_instruction=VISUAL_EVOLUTION_PROMPT,
+    def evolve_character(self, char_id: str, scene_id: int) -> str:
+        """
+        Advance character to next arc stage and return evolution description.
+        Output format: "Character [name] evolution: [trait] → [next], visual: [change]"
+        """
+        sheet = self._sheets.get(char_id)
+        if not sheet:
+            return ""
+
+        name = sheet.get("name", "Unknown")
+        current_stage = self._current_stages.get(char_id, 1)
+        arc_stages = sheet.get("arc_stages", [])
+
+        # Find current and next
+        current_trait, current_visual = "", ""
+        next_trait, next_visual = "", ""
+
+        for s in arc_stages:
+            if s.get("stage") == current_stage:
+                current_trait = s.get("trait", "")
+                current_visual = s.get("visual_change", "")
+            if s.get("stage") == current_stage + 1:
+                next_trait = s.get("trait", "")
+                next_visual = s.get("visual_change", "")
+
+        if next_trait:
+            self._current_stages[char_id] = current_stage + 1
+            evolution_msg = (
+                f"Character {name} evolution: {current_trait} → {next_trait}, "
+                f"visual: {next_visual}"
             )
+        else:
+            evolution_msg = f"Character {name}: at final arc stage ({current_trait})"
 
-            # Update evolution state
-            state = self._evolution_state.setdefault(char_id, {})
-            state.setdefault("visual_changes_applied", []).append({
-                "scene_id": scene_id,
-                "changes": result.get("visual_state", ""),
-            })
-            state.setdefault("emotion_history", []).append({
-                "scene_id": scene_id,
-                "emotion": result.get("emotion_display", ""),
-            })
+        # Log evolution
+        self._evolution_log.append({
+            "character_id": char_id,
+            "scene_id": scene_id,
+            "from_stage": current_stage,
+            "to_stage": self._current_stages.get(char_id, current_stage),
+            "evolution": evolution_msg,
+        })
 
-            return result
+        self.log(f"  🔄 {evolution_msg}")
+        return evolution_msg
 
-        except Exception as e:
-            self.log(f"  Evolution query error for {char_id}: {e}")
-            return {"character_id": char_id, "scene_id": scene_id, "visual_state": "default"}
+    def get_scene_emotion(self, char_id: str, scene_id: int) -> Dict[str, Any]:
+        """Get character's emotional state for a specific scene."""
+        sheet = self._sheets.get(char_id)
+        if not sheet:
+            return {"emotion": "neutral", "intensity": 0.5}
 
-    def advance_arc(self, char_id: str) -> int:
-        """Advance a character to the next arc stage."""
-        state = self._evolution_state.get(char_id, {})
-        current = state.get("current_arc_stage", 0)
-        state["current_arc_stage"] = current + 1
-        return state["current_arc_stage"]
+        emotions = sheet.get("emotional_range", {})
+        for e in emotions.get("per_scene", []):
+            if e.get("scene_id") == scene_id:
+                return e
+        return {"emotion": emotions.get("default", "neutral"), "intensity": 0.5}
+
+    def get_evolution_log(self) -> List[Dict]:
+        """Return full chronological evolution log."""
+        return self._evolution_log
 
     def _build_sheet_prompt(self, char: Dict, style: str) -> str:
         name = char.get("name", "Unknown")
         role = char.get("role", "character")
         backstory = char.get("backstory", "")
-        personality = ", ".join(char.get("personality", []))
-        visual = char.get("visual_traits", {}).get("base", {})
+        personality = ", ".join(char.get("initial_state", {}).get("personality", []))
+        visual_traits = ", ".join(char.get("initial_state", {}).get("visual_traits", []))
+        style_lock = char.get("style_lock", "")
 
-        hair = visual.get("hair", "")
-        eyes = visual.get("eyes", "")
-        build = visual.get("build", "")
-        outfit = visual.get("outfit", "")
-        features = ", ".join(visual.get("distinguishing_features", []))
+        # Arc stages visual progression
+        arc_visuals = []
+        for s in char.get("arc_stages", []):
+            arc_visuals.append(f"Stage {s.get('stage')}: {s.get('visual_change', '')}")
 
         return (
-            f"AnimeGANv2 style character sheet for '{name}', a {role}. "
-            f"Backstory: {backstory}. Personality: {personality}. "
-            f"Hair: {hair}. Eyes: {eyes}. Build: {build}. Outfit: {outfit}. "
-            f"Distinguishing features: {features}. "
+            f"AnimeGANv2 style character sheet. "
+            f"Character: {name} from sheet {char.get('character_id')}. "
+            f"Role: {role}. Backstory: {backstory}. "
+            f"Personality: {personality}. Visual: {visual_traits}. "
+            f"Style anchor: {style_lock}. "
             f"Art style: {style}. "
-            f"Show THREE poses: front view (neutral), side view (determined), "
-            f"and action pose (signature move). Include color palette swatches. "
-            f"Anime production quality, clean white background, detailed linework. "
-            f"FLUX.1 consistency: maintain exact proportions across all three poses."
+            f"Show THREE poses reflecting arc progression: "
+            f"{'; '.join(arc_visuals)}. "
+            f"Include color palette swatches. "
+            f"FLUX.1 consistency: exact proportions across all poses. "
+            f"Professional anime production quality, clean white background."
         )

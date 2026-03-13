@@ -1,10 +1,14 @@
 """
-ImageAgent — enhanced keyframe generation with AnimeGANv2 style,
-Animate Anyone motion hints, and particle/glow effects.
+ImageAgent — enforces Visual Consistency Protocol from Enhancement #1.
+
+Every image prompt MUST include:
+  "Character: [name] from sheet [character_id]"
+  "Current arc stage: [stage] visual traits: [changes]"
+  "Style anchor: [style_lock]"
 
 Open-source inspirations:
-- AnimeGANv2 (TachibanaYoshino): Style-locked anime rendering
-- Animate Anyone (humanaigc): Pose-guided smooth transitions
+- AnimeGANv2: Style-locked anime rendering
+- Animate Anyone: Pose-guided smooth transitions
 - FLUX.1 Kontext: Frame-to-frame consistency via reference anchoring
 """
 import os
@@ -15,7 +19,6 @@ from src.agents.base_agent import BaseAgent
 from src.config import MODEL_PRO_IMAGE, MODEL_FLASH_IMAGE, DEFAULT_ASPECT_RATIO, DEFAULT_IMAGE_SIZE
 
 
-# Effect presets for visual richness
 EFFECT_PRESETS = {
     "particle_rain": "fine rain particles with subtle light refraction",
     "particle_dust": "floating dust motes catching warm light",
@@ -31,20 +34,20 @@ EFFECT_PRESETS = {
     "explosion_particles": "debris and light burst from impact",
     "cherry_blossoms": "floating cherry blossom petals",
     "energy_burst": "radiating energy wave from center",
+    "dust_motes": "gentle floating dust particles in light beams",
 }
 
 
 class ImageAgent(BaseAgent):
     """
-    Enhanced Agent 4: AnimeGANv2-styled keyframes with Animate Anyone
-    motion hints and rich visual effects.
+    Enhanced ImageAgent with mandatory Visual Consistency Protocol.
 
-    Features:
-    - AnimeGANv2 style prefix on all prompts
-    - Animate Anyone motion descriptors for pose-guided frames
-    - Particle/glow/effect system
-    - Character evolution visual state integration
-    - FLUX.1-inspired consistency anchoring
+    Every image prompt includes:
+    1. AnimeGANv2 style prefix
+    2. Character sheet reference + arc stage + style anchor (from CharacterDevelopmentAgent)
+    3. Animate Anyone motion hints
+    4. Effect/particle descriptors
+    5. FLUX.1 consistency anchors
     """
 
     def __init__(self, output_dir: str = "data/output/keyframes", **kwargs):
@@ -52,66 +55,60 @@ class ImageAgent(BaseAgent):
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
-    def _build_enhanced_prompt(
+    def _build_prompt_with_consistency(
         self,
         shot: Dict,
         scene: Dict,
         style: str,
-        char_states: List[Dict] = None,
+        character_consistency_blocks: List[str],
     ) -> str:
-        """Build a rich prompt with AnimeGANv2 style + Animate Anyone motion + effects."""
+        """
+        Build prompt enforcing Visual Consistency Protocol.
+        Every prompt MUST include character sheet ref + arc stage + style anchor.
+        """
         shot_type = shot.get("shot_type", "medium")
         action = shot.get("action", "")
         expression = shot.get("expression", "")
         visual_notes = shot.get("visual_notes", "")
         location = scene.get("location", "")
         time_of_day = scene.get("time_of_day", "day")
-        characters = ", ".join(shot.get("characters_present", []))
         dialogue = shot.get("dialogue")
 
-        # AnimeGANv2 style prefix
+        # ── AnimeGANv2 style prefix ──
         prompt = f"AnimeGANv2 style: {style}. "
 
-        # Scene composition
-        prompt += (
-            f"{shot_type} shot. {location}, {time_of_day}. "
-            f"Characters: {characters}. "
-        )
+        # ── Scene composition ──
+        prompt += f"{shot_type} shot. {location}, {time_of_day}. "
 
-        # Character evolution state
-        if char_states:
-            for cs in char_states:
-                visual = cs.get("visual_state", "")
-                emotion = cs.get("emotion_display", "")
-                if visual:
-                    prompt += f"Character appearance: {visual}. "
-                if emotion:
-                    prompt += f"Emotional display: {emotion}. "
+        # ── VISUAL CONSISTENCY PROTOCOL (MANDATORY) ──
+        for block in character_consistency_blocks:
+            prompt += f"{block}. "
 
-        # Action and expression
+        # ── Action / expression ──
         prompt += f"Action: {action}. Expression: {expression}. "
 
-        # Animate Anyone motion hint
+        # ── Animate Anyone motion hint ──
         camera = shot.get("camera_movement", "static")
+        animate_hint = shot.get("animate_anyone_hint", "")
         if camera != "static":
-            prompt += f"Animate Anyone smooth {camera} motion. "
+            prompt += f"Animate Anyone smooth {camera}. "
+        if animate_hint:
+            prompt += f"Animate Anyone: {animate_hint}. "
 
-        # Effects
+        # ── Effects ──
         effects = shot.get("effects", [])
         if effects:
-            effect_descs = []
-            for eff in effects:
-                desc = EFFECT_PRESETS.get(eff, eff)
-                effect_descs.append(desc)
-            prompt += f"Visual effects: {', '.join(effect_descs)}. "
+            effect_descs = [EFFECT_PRESETS.get(e, e) for e in effects]
+            prompt += f"Effects: {', '.join(effect_descs)}. "
 
-        # Visual notes and quality
+        # ── Visual notes ──
         if visual_notes:
             prompt += f"{visual_notes}. "
 
+        # ── Quality + FLUX.1 consistency ──
         prompt += (
-            "High quality anime production frame, detailed backgrounds, "
-            "FLUX.1 consistency: maintain character proportions and design exactly."
+            "High quality anime production frame, detailed backgrounds. "
+            "FLUX.1 consistency: maintain exact character proportions and design."
         )
 
         if dialogue:
@@ -119,8 +116,7 @@ class ImageAgent(BaseAgent):
 
         return prompt
 
-    def _load_character_refs(self, character_sheets: List[Dict]) -> List[Image.Image]:
-        """Load character sheet images as ReferenceNet-style anchors."""
+    def _load_refs(self, character_sheets: List[Dict]) -> List[Image.Image]:
         refs = []
         for sheet in character_sheets:
             path = sheet.get("local_path")
@@ -129,27 +125,55 @@ class ImageAgent(BaseAgent):
                     refs.append(Image.open(path))
                 except Exception:
                     pass
-        return refs[:3]  # Nano Banana supports up to 14, use 3 for speed
+        return refs[:3]
 
     def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         storyboard = input_data.get("storyboard", {})
         character_data = input_data.get("character_data", {})
-        style = character_data.get("style", "AnimeGANv2-style: cel-shaded, high-contrast")
+        char_agent = input_data.get("character_agent")  # Live agent ref for consistency blocks
+        style = character_data.get("style", "AnimeGANv2 style: cel-shaded, high-contrast")
 
-        self.log("Generating enhanced keyframes (AnimeGANv2 + Animate Anyone + effects)...")
+        self.log("Generating keyframes with Visual Consistency Protocol...")
 
-        refs = self._load_character_refs(character_data.get("character_sheets", []))
-        self.log(f"  ReferenceNet anchors: {len(refs)} character sheets loaded")
+        refs = self._load_refs(character_data.get("character_sheets", []))
+        self.log(f"  ReferenceNet anchors: {len(refs)} sheets loaded")
+
+        # Build consistency blocks index from sheets
+        sheets = character_data.get("character_sheets", [])
+        char_id_by_name = {}
+        for s in sheets:
+            char_id_by_name[s.get("name", "").lower()] = s.get("character_id", "")
 
         keyframes: List[Dict[str, Any]] = []
 
         for scene in storyboard.get("scenes", []):
             scene_id = scene.get("scene_id", 0)
+
             for shot in scene.get("shots", []):
                 shot_id = shot.get("shot_id", 0)
                 self.log(f"  Generating: Scene {scene_id}, Shot {shot_id}")
 
-                prompt = self._build_enhanced_prompt(shot, scene, style)
+                # ── Visual Consistency Protocol ──
+                consistency_blocks = []
+                for char_name in shot.get("characters_present", []):
+                    char_id = char_id_by_name.get(char_name.lower(), "")
+                    if char_agent and char_id:
+                        block = char_agent.get_visual_consistency_block(char_id)
+                        if block:
+                            consistency_blocks.append(block)
+                    elif char_id:
+                        # Fallback: build from sheet data
+                        for s in sheets:
+                            if s.get("character_id") == char_id:
+                                style_lock = s.get("style_lock", "")
+                                consistency_blocks.append(
+                                    f"Character: {char_name} from sheet {char_id}, "
+                                    f"Style anchor: {style_lock}"
+                                )
+
+                prompt = self._build_prompt_with_consistency(
+                    shot, scene, style, consistency_blocks
+                )
 
                 try:
                     if refs:
@@ -183,6 +207,7 @@ class ImageAgent(BaseAgent):
                             "duration_seconds": shot.get("duration_seconds", 3),
                             "effects": shot.get("effects", []),
                             "camera_movement": shot.get("camera_movement", "static"),
+                            "consistency_blocks": consistency_blocks,
                         })
                     else:
                         keyframes.append({"scene_id": scene_id, "shot_id": shot_id, "local_path": None})
@@ -191,5 +216,5 @@ class ImageAgent(BaseAgent):
                     self.log(f"  Error: S{scene_id}/Shot{shot_id}: {e}")
                     keyframes.append({"scene_id": scene_id, "shot_id": shot_id, "error": str(e)})
 
-        self.log(f"Keyframe generation complete — {len(keyframes)} enhanced frames")
+        self.log(f"Keyframe generation complete — {len(keyframes)} frames (consistency enforced)")
         return {"keyframes": keyframes, "style": style}
