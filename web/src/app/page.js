@@ -56,15 +56,26 @@ export default function Home() {
   }, []);
 
   // ── Derive live data from stream or fallback ──
-  const scenes = stream.result?.storyboard?.scenes?.map((s, i) => ({
-    id: s.scene_id || i + 1,
-    title: s.title || `Scene ${i + 1}`,
-    arcStage: s.arc_stage || 1,
-    trait: s.trait || "—",
-    shots: s.shots?.length || 0,
-    rlScore: stream.result?.rl_rewards?.total || 0,
-    duration: s.shots?.reduce((a, sh) => a + (sh.duration_seconds || 3), 0) || 0,
-  })) || DEFAULT_SCENES;
+  const rawScenes = stream.result?.scene_rendering?.scenes || stream.result?.storyboard?.scenes || [];
+  const scenes = rawScenes.length > 0 ? rawScenes.map((s, i) => {
+    // If it's from scene_rendering, it has 'shots' with 'image_path'
+    let imageUrl = null;
+    if (s.shots && s.shots.length > 0 && s.shots[0].image_path && s.shots[0].image_path !== "Not generated") {
+      // Convert 'data/output/...' to '/output/...'
+      imageUrl = "http://localhost:8000/" + s.shots[0].image_path.replace("data/output/", "output/");
+    }
+
+    return {
+      id: s.scene_id || i + 1,
+      title: s.title || `Scene ${i + 1}`,
+      arcStage: s.arc_stage || 1,
+      trait: s.trait || "—",
+      shots: s.shots?.length || 0,
+      rlScore: stream.result?.rl_rewards?.total || 0,
+      duration: s.shots?.reduce((a, sh) => a + (sh.duration_seconds || 3), 0) || 0,
+      imageUrl: imageUrl,
+    };
+  }) : DEFAULT_SCENES;
 
   const characters = stream.result?.character_data?.character_sheets?.map((c) => ({
     id: c.character_id,
@@ -161,26 +172,47 @@ export default function Home() {
         rlData={rlData}
       />
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      <div style={{ display: "flex", height: "calc(100vh - var(--header-height))" }}>
+        {/* LEFT COMPONENT COLUMN */}
         <LeftSidebar pipeline={pipeline} rlData={rlData} characters={characters} />
-        <CenterCanvas scenes={scenes} selectedScene={selectedScene || scenes[0]} rlData={rlData} characters={characters} />
-        <RightPanel
-          rlData={rlData}
-          characters={characters}
+
+        {/* CENTER COLUMN (Player + Timeline) */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+          
+          {/* Top Player Canvas */}
+          <div style={{ flex: 1, padding: 24, overflowY: "auto", position: "relative" }}>
+             <CenterCanvas scenes={scenes} rlData={rlData} selectedScene={selectedScene || scenes[0]} characters={characters} />
+          </div>
+
+          {/* Bottom NLE Timeline */}
+          <TimelineEditor
+            scenes={scenes}
+            selectedScene={selectedScene || scenes[0]}
+            onSelectScene={setSelectedScene}
+            collapsed={timelineCollapsed}
+            onToggleCollapse={() => setTimelineCollapsed(!timelineCollapsed)}
+          />
+        </div>
+
+        {/* RIGHT CONTROL PANEL */}
+        <RightPanel 
+          rlData={rlData} 
+          characters={characters} 
           selectedScene={selectedScene || scenes[0]}
+          storybookData={stream.result?.storybook}
           onGenerate={handleGenerate}
           onFeedback={handleFeedback}
           isGenerating={stream.status === "generating"}
         />
       </div>
 
-      <TimelineEditor
-        scenes={scenes}
-        selectedScene={selectedScene || scenes[0]}
-        onSelectScene={setSelectedScene}
-        collapsed={timelineCollapsed}
-        onToggleCollapse={() => setTimelineCollapsed(!timelineCollapsed)}
-      />
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: 32, background: "hsla(240, 15%, 8%, 0.8)", borderTop: "1px solid hsla(240, 20%, 30%, 0.3)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", fontSize: 11, color: "hsl(var(--text-muted))", backdropFilter: "blur(10px)", zIndex: 100 }}>
+         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+           <span>⚡ Live AI compute meter</span>
+           <div style={{ width: 60, height: 4, background: "hsla(260, 80%, 60%, 0.3)", borderRadius: 2 }}><div style={{ width: `${rlData.coherence}%`, height: "100%", background: "hsl(260, 80%, 60%)", borderRadius: 2 }}/></div>
+         </div>
+         <div>Story Coherence <span style={{ color: "hsl(160, 84%, 45%)", fontWeight: 600 }}>{rlData.coherence.toFixed(0)}%</span></div>
+      </div>
 
       <AnimatePresence>
         {showAssetLibrary && <AssetLibrary onClose={() => setShowAssetLibrary(false)} jobId={stream.jobId} />}

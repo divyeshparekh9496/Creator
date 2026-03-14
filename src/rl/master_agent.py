@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from src.rl.reward_system import (
     RewardScore, RLAction, RLEpisode, RewardEvaluator, REWARD_WEIGHTS
 )
-from src.rl.sub_agents import CharacterRL, VisualRL, AudioRL, SequenceRL
+from src.rl.sub_agents import CharacterRL, VisualRL, AudioRL, SequenceRL, StorybookRL
 from src.utils.gcp_utils import GCPUtils
 from src.utils.genai_client import GenAIClient
 from src.config import MODEL_FLASH_TEXT
@@ -104,6 +104,7 @@ class MasterRLAgent:
         self.visual_rl = VisualRL()
         self.audio_rl = AudioRL()
         self.sequence_rl = SequenceRL()
+        self.storybook_rl = StorybookRL()
 
         # Reward evaluator
         self.reward_evaluator = RewardEvaluator(genai_client=self.genai, gcs=self.gcs)
@@ -204,6 +205,7 @@ class MasterRLAgent:
         keyframes = pipeline_state.get("keyframes", {})
         animation = pipeline_state.get("animation_plan", {})
         audio = pipeline_state.get("audio_plan", {})
+        storybook = pipeline_state.get("storybook", {})
 
         char_reward = self.character_rl.compute_reward(char_data)
         visual_reward = self.visual_rl.compute_reward({
@@ -212,6 +214,7 @@ class MasterRLAgent:
         })
         audio_reward = self.audio_rl.compute_reward({"audio_plan": audio})
         seq_reward = self.sequence_rl.compute_reward({"animation_plan": animation})
+        storybook_reward = self.storybook_rl.compute_reward({"storybook": storybook})
 
         # Auto-eval via Gemini (scene-level)
         scene_data = pipeline_state.get("scene_rendering", {})
@@ -233,10 +236,10 @@ class MasterRLAgent:
         else:
             # Fallback: use sub-RL scores
             avg_auto = RewardScore(
-                coherence=char_reward * 0.5 + seq_reward * 0.5,
-                creativity=visual_reward * 0.6 + audio_reward * 0.4,
+                coherence=char_reward * 0.4 + seq_reward * 0.4 + storybook_reward * 0.2,
+                creativity=visual_reward * 0.5 + audio_reward * 0.3 + storybook_reward * 0.2,
                 consistency=visual_reward,
-                emotional_impact=char_reward * 0.7 + audio_reward * 0.3,
+                emotional_impact=char_reward * 0.5 + audio_reward * 0.3 + storybook_reward * 0.2,
                 technical_quality=visual_reward * 0.5 + audio_reward * 0.5,
             )
 
@@ -247,6 +250,7 @@ class MasterRLAgent:
                 "visual": visual_reward,
                 "audio": audio_reward,
                 "sequence": seq_reward,
+                "storybook": storybook_reward,
             },
             "total": avg_auto.total,
         }

@@ -210,3 +210,37 @@ class SequenceRL(SubRLAgent):
         score = min(1.0, max(0.0, reward))
         self.log_reward(0, score, f"{len(parts)} parts evaluated")
         return score
+
+
+class StorybookRL(SubRLAgent):
+    """
+    Sub-RL for Storybook native interleaving quality.
+    Rewards: Presence of inline images (multimodal output), text length, formatting.
+    """
+
+    def __init__(self):
+        super().__init__("StorybookRL", "storybook")
+
+    def compute_reward(self, data: Dict[str, Any]) -> float:
+        reward = 0.0
+        storybook = data.get("storybook", {})
+        
+        # Reward native multimodal image generation
+        images = storybook.get("images", [])
+        if len(images) > 0:
+            reward += 0.3 + (0.05 * min(len(images), 4))
+            
+        md_path = storybook.get("markdown_path", "")
+        if md_path:
+            reward += 0.2
+            
+        # Reward narrative depth
+        text_length = storybook.get("text_length", 0)
+        if text_length > 1000:
+            reward += 0.3
+        elif text_length > 500:
+            reward += 0.15
+            
+        score = min(1.0, max(0.0, reward))
+        self.log_reward(0, score, f"{len(images)} inline images, {text_length} chars")
+        return score

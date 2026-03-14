@@ -6,14 +6,22 @@ Built with **Gemini 3.1**, **Nano Banana 2**, **Google GenAI SDK**, **Google Clo
 
 ## Architecture
 
-```
-User Story → StoryAgent → CharacterDevelopmentAgent → [RL Episode Start]
-                                     ↓
-StoryboardAgent → ImageAgent → AnimationAgent → AudioAgent
-                                     ↓
-               [RL Reward Computation] → SceneRenderer → EditorAgent
-                                     ↓
-                           [RL Policy Update] → Final Anime
+```text
+                       [ Master RL Agent ]
+        ↗--------↑--------↑--------↑--------↑--------↖
+     [RL]      [RL]     [RL]     [RL]     [RL]     [RL]
+      ↑         ↑        ↑        ↑        ↑        ↑
+    Story      Char   StoryBd   Image    Anim     Audio
+      ↓         ↓        ↓        ↓        ↓        ↓
+      └---------┴--------┴---┬----┴--------┴--------┘
+                             ↓
+                        SceneRenderer
+                             ↓
+                       [Scenes Button]
+                             ↓
+                        EditorAgent
+                             ↓
+                     [Final Anime Button]
 ```
 
 ### Pipeline (10 Stages)

@@ -1,7 +1,8 @@
 "use client";
 import { motion } from "framer-motion";
-import { Upload, FileText, ImageIcon, Mic, ThumbsUp, ThumbsDown, Sliders, Send, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { Upload, FileText, ImageIcon, Mic, ThumbsUp, ThumbsDown, Sliders, Send, Sparkles, BookOpen } from "lucide-react";
+import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 function FeedbackSlider({ label, value, color }) {
   return (
@@ -26,9 +27,11 @@ function FeedbackSlider({ label, value, color }) {
   );
 }
 
-export default function RightPanel({ rlData, characters, selectedScene, onGenerate, onFeedback, isGenerating }) {
+export default function RightPanel({ rlData, characters, selectedScene, storybookData, onGenerate, onFeedback, isGenerating }) {
   const [storyInput, setStoryInput] = useState("");
-  const [showFeedback, setShowFeedback] = useState(false);
+  const [activePreset, setActivePreset] = useState("Cinematic 4K");
+
+  const presets = ["Cinematic 4K", "Pixar Dream", "Anime Epic", "Dark Cyberpunk"];
 
   return (
     <motion.aside
@@ -43,169 +46,82 @@ export default function RightPanel({ rlData, characters, selectedScene, onGenera
         display: "flex", flexDirection: "column", zIndex: 10, position: "relative",
       }}
     >
-      {/* Multimodal Input */}
-      <div style={{ padding: 16, borderBottom: "1px solid var(--glass-border)" }}>
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: "hsl(var(--text-primary))" }}>
-          Story Input
-        </div>
-
-        {/* Upload buttons */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          {[
-            { icon: <FileText size={13} />, label: "Text" },
-            { icon: <ImageIcon size={13} />, label: "Image" },
-            { icon: <Mic size={13} />, label: "Voice" },
-            { icon: <Upload size={13} />, label: "File" },
-          ].map((btn) => (
-            <motion.button
-              key={btn.label}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="btn-ghost"
-              style={{ flex: 1, justifyContent: "center", padding: "6px 4px", fontSize: 11 }}
-            >
-              {btn.icon}
-              <span style={{ display: "none" }}>{btn.label}</span>
-            </motion.button>
-          ))}
-        </div>
-
-        {/* Text input */}
-        <div className="glow-focus" style={{
-          borderRadius: 10, border: "1px solid hsl(var(--border))",
-          background: "hsl(var(--bg-secondary))",
-          overflow: "hidden",
-        }}>
-          <textarea
-            value={storyInput}
-            onChange={(e) => setStoryInput(e.target.value)}
-            placeholder="Paste your story, describe a scene, or upload media..."
-            style={{
-              width: "100%", height: 100, padding: 10, fontSize: 12, lineHeight: 1.6,
-              background: "transparent", border: "none", color: "hsl(var(--text-primary))",
-              resize: "none", outline: "none",
-            }}
-          />
-          <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 8px" }}>
-            <motion.button
-              className="btn-primary"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              style={{ fontSize: 12, padding: "5px 12px", opacity: isGenerating ? 0.6 : 1 }}
-              onClick={() => storyInput.trim() && onGenerate && onGenerate(storyInput)}
-              disabled={isGenerating || !storyInput.trim()}
-            >
-              {isGenerating ? (
-                <><div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid white", borderTopColor: "transparent", animation: "spin 0.6s linear infinite" }} /> Generating...</>
-              ) : (
-                <><Send size={12} /> Generate</>
-              )}
-            </motion.button>
+      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 24, flex: 1 }}>
+        
+        {/* Prompt Section */}
+        <div>
+          <div className="section-label" style={{ marginBottom: 12 }}>Prompt</div>
+          <div className="glow-focus" style={{
+            borderRadius: 12, border: "1px solid hsla(240, 20%, 30%, 0.5)",
+            background: "hsla(240, 15%, 15%, 0.6)", padding: 2,
+            boxShadow: "inset 0 2px 10px hsla(0,0%,0%,0.2)"
+          }}>
+            <textarea
+              value={storyInput}
+              onChange={(e) => setStoryInput(e.target.value)}
+              placeholder="Direct the storyteller... describe next scene, camera move, emotion, music cue"
+              style={{
+                width: "100%", height: 120, padding: 12, fontSize: 13, lineHeight: 1.6,
+                background: "transparent", border: "none", color: "hsl(var(--text-primary))",
+                resize: "none", outline: "none",
+              }}
+            />
           </div>
         </div>
-      </div>
 
-      {/* RL Feedback */}
-      <div style={{ padding: 16, borderBottom: "1px solid var(--glass-border)" }}>
-        <div style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          marginBottom: 12,
-        }}>
-          <div style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-            <Sparkles size={14} style={{ color: "hsl(var(--accent))" }} />
-            RL Feedback
-          </div>
-          <button
-            className="btn-ghost"
-            onClick={() => setShowFeedback(!showFeedback)}
-            style={{ fontSize: 10, padding: "3px 8px" }}
-          >
-            <Sliders size={10} /> {showFeedback ? "Hide" : "Show"} Sliders
-          </button>
-        </div>
-
-        {/* Quick thumbs */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9, rotate: 10 }}
-            onClick={() => onFeedback && onFeedback(true)}
-            style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 500,
-              background: "hsla(160,84%,39%,0.1)", color: "hsl(var(--accent))",
-              border: "1px solid hsla(160,84%,39%,0.2)", cursor: "pointer",
-            }}
-          >
-            <ThumbsUp size={16} /> Great
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9, rotate: -10 }}
-            onClick={() => onFeedback && onFeedback(false)}
-            style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 500,
-              background: "hsla(0,70%,50%,0.1)", color: "hsl(0,70%,65%)",
-              border: "1px solid hsla(0,70%,50%,0.2)", cursor: "pointer",
-            }}
-          >
-            <ThumbsDown size={16} /> Improve
-          </motion.button>
-        </div>
-
-        {/* Dimension sliders */}
-        {showFeedback && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-          >
-            <FeedbackSlider label="Coherence" value={rlData.coherence} color="#8B5CF6" />
-            <FeedbackSlider label="Creativity" value={rlData.creativity} color="#3B82F6" />
-            <FeedbackSlider label="Consistency" value={rlData.consistency} color="#10B981" />
-            <FeedbackSlider label="Emotional Impact" value={rlData.emotional} color="#F59E0B" />
-            <FeedbackSlider label="Technical Quality" value={rlData.technical} color="#EF4444" />
-          </motion.div>
-        )}
-      </div>
-
-      {/* Selected Scene Detail */}
-      <div style={{ padding: 16, flex: 1, overflow: "auto" }}>
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: "hsl(var(--text-primary))" }}>
-          Scene Detail
-        </div>
-
-        {selectedScene && (
-          <div className="glass-card" style={{ padding: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Scene {selectedScene.id}: {selectedScene.title}
-            </div>
-            <div style={{ fontSize: 11, color: "hsl(var(--text-secondary))", marginBottom: 8 }}>
-              Arc: {selectedScene.trait} (Stage {selectedScene.arcStage})
-            </div>
-
-            <div style={{ fontSize: 11, color: "hsl(var(--text-muted))", lineHeight: 1.6 }}>
-              <div>📖 <strong>Narration:</strong> "The weight of destiny settled on her shoulders..."</div>
-              <div style={{ marginTop: 4 }}>🎬 <strong>Action:</strong> Character faces the storm</div>
-              <div style={{ marginTop: 4 }}>🖼️ <strong>Image:</strong> AnimeGANv2 style, Animate Anyone smooth turn</div>
-              <div style={{ marginTop: 4 }}>🔊 <strong>Audio:</strong> {selectedScene.trait === "heroic" ? "Epic horns, full orchestra" : "Tense strings, heartbeat SFX"}</div>
-              <div style={{ marginTop: 4 }}>✨ <strong>Effects:</strong> particle_rain + inner_glow</div>
-              <div style={{ marginTop: 6, fontSize: 10, color: "hsl(var(--accent))" }}>
-                📊 RL: {selectedScene.rlScore.toFixed(2)} | Policy: {rlData.policyVersion}
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-              <button className="btn-primary" style={{ flex: 1, justifyContent: "center", fontSize: 11 }}>
-                <Sparkles size={12} /> RL Enhance
+        {/* Style Presets */}
+        <div>
+          <div className="section-label" style={{ marginBottom: 12 }}>Style preset</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {presets.map(p => (
+              <button
+                key={p}
+                onClick={() => setActivePreset(p)}
+                style={{
+                  padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                  background: activePreset === p ? "hsla(260, 80%, 60%, 0.2)" : "transparent",
+                  color: activePreset === p ? "hsl(260, 80%, 75%)" : "hsl(var(--text-secondary))",
+                  border: activePreset === p ? "1px solid hsl(260, 80%, 60%)" : "1px solid hsla(240, 20%, 30%, 0.4)",
+                  transition: "all 0.2s"
+                }}
+              >
+                {p}
               </button>
-              <button className="btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 11 }}>
-                Regen Prompt
-              </button>
-            </div>
+            ))}
           </div>
-        )}
+        </div>
+
+        {/* Sliders */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <FeedbackSlider label="Duration" value={0.6} color="#8B5CF6" />
+          <FeedbackSlider label="Intensity" value={0.8} color="#3B82F6" />
+          <FeedbackSlider label="Particle Density" value={0.3} color="#10B981" />
+          <FeedbackSlider label="Camera Speed" value={0.5} color="#F59E0B" />
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Massive Generate Button */}
+        <button
+          className="btn-primary"
+          onClick={() => storyInput.trim() && onGenerate && onGenerate(storyInput)}
+          disabled={isGenerating || !storyInput.trim()}
+          style={{
+            width: "100%", padding: "16px", borderRadius: 12, fontSize: 16, fontWeight: 700,
+            textTransform: "uppercase", letterSpacing: "0.05em",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: isGenerating || !storyInput.trim() ? 0.6 : 1,
+            background: "linear-gradient(135deg, hsl(355, 80%, 55%), hsl(260, 80%, 60%))",
+            boxShadow: "0 0 30px hsla(355, 80%, 55%, 0.4)", border: "1px solid hsla(355, 80%, 65%, 0.5)"
+          }}
+        >
+          {isGenerating ? (
+            <><div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid white", borderTopColor: "transparent", animation: "spin 0.6s linear infinite" }} /> Generating...</>
+          ) : (
+            <>DIRECT & GENERATE <Send size={18} style={{ transform: "rotate(-45deg) translateY(-2px)" }} /></>
+          )}
+        </button>
+
       </div>
     </motion.aside>
   );

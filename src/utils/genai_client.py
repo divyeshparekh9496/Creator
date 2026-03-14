@@ -243,7 +243,7 @@ class GenAIClient:
                 config=types.GenerateContentConfig(
                     response_modalities=["Image"],
                     image_config=types.ImageConfig(
-                        aspect_ratio=aspect_ratio, image_size=image_size,
+                        aspect_ratio=aspect_ratio,
                     ),
                 ),
             )
@@ -256,7 +256,7 @@ class GenAIClient:
         try:
             return self._retry_call(_call, stage, model)
         except Exception as e:
-            print(f"[GenAI] Image gen skipped (fallback): {type(e).__name__}")
+            print(f"[GenAI] Image gen skipped (fallback): {type(e).__name__} - {str(e)}")
             return None
 
     # ── Image editing ─────────────────────────────────────────
@@ -275,7 +275,7 @@ class GenAIClient:
                 config=types.GenerateContentConfig(
                     response_modalities=["Image"],
                     image_config=types.ImageConfig(
-                        aspect_ratio=aspect_ratio, image_size=image_size,
+                        aspect_ratio=aspect_ratio,
                     ),
                 ),
             )
@@ -303,7 +303,7 @@ class GenAIClient:
                 config=types.GenerateContentConfig(
                     response_modalities=["Text", "Image"],
                     image_config=types.ImageConfig(
-                        aspect_ratio=aspect_ratio, image_size=image_size,
+                        aspect_ratio=aspect_ratio,
                     ),
                 ),
             )

@@ -21,6 +21,7 @@ from src.agents.character_agent import CharacterDevelopmentAgent
 from src.agents.image_agent import ImageAgent
 from src.agents.animation_agent import AnimationAgent
 from src.agents.audio_agent import AudioAgent
+from src.agents.storybook_agent import StorybookAgent
 from src.agents.scene_renderer import SceneRenderer
 from src.agents.editor_agent import EditorAgent
 from src.rl.master_agent import MasterRLAgent
@@ -66,6 +67,9 @@ class CreatorPipeline:
         self.audio_agent = AudioAgent(
             output_dir=os.path.join(output_dir, "audio"), **agent_kwargs
         )
+        self.storybook_agent = StorybookAgent(
+            output_dir=os.path.join(output_dir, "storybook"), **agent_kwargs
+        )
         self.scene_renderer = SceneRenderer(
             output_dir=os.path.join(output_dir, "scenes"), **agent_kwargs
         )
@@ -78,7 +82,7 @@ class CreatorPipeline:
         )
 
         self.state: Dict[str, Any] = {}
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     def _save_state(self, stage: str, data: Any):
         self.state[stage] = data
@@ -147,8 +151,8 @@ class CreatorPipeline:
             "scenes": len(storyboard.get("scenes", [])),
         }})
 
-        # ── Stages 5/6/7: PARALLEL (Image + Animation + Audio) ──
-        self._emit("stage_start", {"stage": "Keyframes + Animation + Audio (parallel)", "index": 5})
+        # ── Stages 5/6/7: PARALLEL (Image + Animation + Audio + Storybook) ──
+        self._emit("stage_start", {"stage": "Keyframes + Animation + Audio + Storybook (parallel)", "index": 5})
 
         image_input = {
             "storyboard": storyboard,
@@ -160,22 +164,30 @@ class CreatorPipeline:
             "animation_plan": {}, "storyboard": storyboard,
             "character_data": characters,
         }
+        storybook_input = {
+            "storyboard": storyboard, "character_data": characters,
+            "story_analysis": story
+        }
 
         # Run in parallel threads
         future_image = self._executor.submit(self._run_cached, "image", self.image_agent, image_input)
         future_anim = self._executor.submit(self._run_cached, "animation", self.animation_agent, anim_input)
         future_audio = self._executor.submit(self._run_cached, "audio", self.audio_agent, audio_input)
+        future_storybook = self._executor.submit(self._run_cached, "storybook", self.storybook_agent, storybook_input)
 
         # Collect results
         keyframes = future_image.result()
         animation = future_anim.result()
         audio = future_audio.result()
+        storybook = future_storybook.result()
 
         self._save_state("keyframes", keyframes)
         self._save_state("animation_plan", animation)
         self._save_state("audio_plan", audio)
+        self._save_state("storybook", storybook)
         self._emit("stage_done", {"stage": "Parallel stages complete", "index": 7, "data": {
             "keyframes": len(keyframes.get("keyframes", [])),
+            "storybook_images": len(storybook.get("images", []))
         }})
 
         # Stage 8: RL Rewards
@@ -234,6 +246,7 @@ class CreatorPipeline:
             "story": self.story_agent, "character": self.character_agent,
             "storyboard": self.storyboard_agent, "image": self.image_agent,
             "animation": self.animation_agent, "audio": self.audio_agent,
+            "storybook": self.storybook_agent,
             "scene": self.scene_renderer, "editor": self.editor_agent,
         }
         agent = stages.get(stage_name)

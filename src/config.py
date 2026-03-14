@@ -18,7 +18,7 @@ MODEL_FLASH_IMAGE = "gemini-3.1-flash-image-preview"
 # Nano Banana Pro — professional quality, thinking mode, up to 4K
 MODEL_PRO_IMAGE = "gemini-3-pro-image-preview"
 # Text-only reasoning backbone
-MODEL_FLASH_TEXT = "gemini-2.0-flash"
+MODEL_FLASH_TEXT = "gemini-2.5-flash"
 
 # ── Defaults ─────────────────────────────────────────────────
 DEFAULT_ASPECT_RATIO = "16:9"

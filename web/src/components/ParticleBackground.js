@@ -23,21 +23,27 @@ export default function ParticleBackground() {
       reset() {
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
-        this.size = Math.random() * 2 + 0.5;
-        this.speedX = (Math.random() - 0.5) * 0.3;
-        this.speedY = (Math.random() - 0.5) * 0.3;
-        this.opacity = Math.random() * 0.4 + 0.1;
-        this.hue = Math.random() > 0.5 ? 263 : 220;
+        this.size = Math.random() * 1.5 + 0.2; // Smaller distant stars
+        this.speedX = (Math.random() - 0.5) * 0.1;
+        this.speedY = -Math.random() * 0.2 - 0.05; // Drift upwards slowly
+        this.opacity = Math.random() * 0.5 + 0.1;
+        this.hue = Math.random() > 0.5 ? 260 : 220;
       }
       update() {
         this.x += this.speedX;
         this.y += this.speedY;
-        if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) this.reset();
+        // Wrap around bottom if they float too high
+        if (this.x < 0 || this.x > canvas.width || this.y < 0) {
+          this.x = Math.random() * canvas.width;
+          this.y = canvas.height + 10;
+        }
       }
       draw() {
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${this.hue}, 70%, 65%, ${this.opacity})`;
+        ctx.fillStyle = `hsla(${this.hue}, 60%, 80%, ${this.opacity})`;
+        ctx.shadowBlur = this.size * 2;
+        ctx.shadowColor = `hsla(${this.hue}, 80%, 70%, ${this.opacity})`;
         ctx.fill();
       }
     }
@@ -62,7 +68,7 @@ export default function ParticleBackground() {
       ref={canvasRef}
       style={{
         position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
-        pointerEvents: "none", zIndex: 0, opacity: 0.4,
+        pointerEvents: "none", zIndex: 0, opacity: 0.6,
       }}
     />
   );

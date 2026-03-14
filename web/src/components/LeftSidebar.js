@@ -3,35 +3,29 @@ import { motion } from "framer-motion";
 import { FolderKanban, Bot, GitBranch, Check, Loader2, Clock, User, ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
-function PipelineStage({ stage, index }) {
-  const icons = { done: <Check size={12} />, processing: <Loader2 size={12} className="animate-spin" />, queued: <Clock size={12} /> };
-  const colors = {
-    done: "hsl(var(--accent))",
-    processing: "hsl(var(--primary))",
-    queued: "hsl(var(--text-muted))"
-  };
+function StoryBeatCard({ index, title, description, isActive }) {
   return (
     <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05 }}
+      whileHover={{ scale: 1.02 }}
       style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "4px 0",
-        fontSize: 12, color: colors[stage.status],
+        padding: "10px 12px", borderRadius: 8, marginBottom: 8, cursor: "pointer",
+        background: isActive ? "hsla(260, 40%, 30%, 0.3)" : "hsla(240, 15%, 16%, 0.5)",
+        border: isActive ? "1px solid hsla(260, 60%, 50%, 0.5)" : "1px solid hsla(240, 20%, 30%, 0.3)",
+        borderLeft: isActive ? "3px solid hsl(260, 80%, 60%)" : "3px solid transparent",
+        display: "flex", gap: 10,
+        boxShadow: isActive ? "0 4px 12px hsla(260, 60%, 50%, 0.15)" : "none"
       }}
     >
-      <div style={{ width: 18, display: "flex", justifyContent: "center" }}>{icons[stage.status]}</div>
-      <span style={{ flex: 1 }}>{stage.name}</span>
-      {stage.time && <span style={{ fontSize: 10, opacity: 0.7 }}>{stage.time}</span>}
-      {stage.progress != null && (
-        <div style={{ width: 40, height: 3, borderRadius: 2, background: "hsl(var(--bg-hover))" }}>
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${stage.progress}%` }}
-            style={{ height: "100%", borderRadius: 2, background: "hsl(var(--primary))" }}
-          />
-        </div>
-      )}
+      <div style={{
+        width: 24, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "hsla(240, 20%, 25%, 0.6)", fontSize: 11, fontWeight: 700, color: "hsl(var(--text-secondary))"
+      }}>
+        {index}
+      </div>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "hsl(var(--text-primary))", marginBottom: 2 }}>{title}</div>
+        <div style={{ fontSize: 11, color: "hsl(var(--text-muted))", lineHeight: 1.4 }}>{description}</div>
+      </div>
     </motion.div>
   );
 }
@@ -73,84 +67,67 @@ export default function LeftSidebar({ pipeline, rlData, characters }) {
         position: "relative",
       }}
     >
-      {/* Projects */}
-      <SidebarSection title="Projects" icon={<FolderKanban size={12} />}>
-        {["Samurai Dawn", "Elf Chronicles", "Mecha Uprising"].map((name, i) => (
-          <motion.button
-            key={name}
-            whileHover={{ x: 4, backgroundColor: "hsl(var(--bg-hover))" }}
-            style={{
-              width: "100%", display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 10px", borderRadius: 8, fontSize: 13,
-              color: i === 0 ? "hsl(var(--text-primary))" : "hsl(var(--text-secondary))",
-              background: i === 0 ? "hsl(var(--bg-tertiary))" : "transparent",
-              border: i === 0 ? "1px solid hsl(var(--border-glow))" : "1px solid transparent",
-              cursor: "pointer", textAlign: "left",
-            }}
-          >
-            <div style={{
-              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-              background: `linear-gradient(135deg, hsl(${200 + i * 30},60%,40%), hsl(${220 + i * 30},60%,30%))`,
-            }} />
-            <div>
-              <div style={{ fontWeight: 500 }}>{name}</div>
-              <div style={{ fontSize: 10, color: "hsl(var(--text-muted))" }}>
-                {i === 0 ? "Active" : `${3 - i} scenes`}
-              </div>
-            </div>
-          </motion.button>
-        ))}
-      </SidebarSection>
-
       {/* Characters */}
-      <SidebarSection title="Characters" icon={<User size={12} />}>
-        {characters.map((char) => (
-          <div key={char.id} style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "6px 10px", borderRadius: 8, fontSize: 12,
-            marginBottom: 4,
-          }}>
-            <div style={{
-              width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-              background: char.role === "protagonist"
-                ? "linear-gradient(135deg, hsl(263,70%,50%), hsl(200,70%,50%))"
-                : "linear-gradient(135deg, hsl(0,60%,45%), hsl(35,80%,50%))",
-              border: "2px solid hsl(var(--border))",
-            }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500, color: "hsl(var(--text-primary))" }}>{char.name}</div>
-              <div style={{ fontSize: 10, color: "hsl(var(--text-muted))" }}>{char.trait} • Stage {char.arcStage}</div>
-            </div>
-            <span className="badge badge-primary">Arc {char.arcStage}</span>
-          </div>
-        ))}
-      </SidebarSection>
-
-      {/* RL Policy */}
-      <SidebarSection title="RL Policy" icon={<Bot size={12} />}>
-        <div className="glass-card" style={{ padding: 10, marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
-            <span>Policy {rlData.policyVersion}</span>
-            <span className="badge badge-success">Ep. {rlData.episode}</span>
-          </div>
-          {rlData.actions.map((a, i) => (
-            <div key={i} style={{
-              fontSize: 11, color: "hsl(var(--text-secondary))", padding: "3px 0",
-              display: "flex", alignItems: "center", gap: 4,
-            }}>
-              <span style={{ color: "hsl(var(--accent))" }}>→</span>
-              {a.type}: {a.param}
-            </div>
+      <SidebarSection title="Characters" icon={<User size={14} />}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 8 }}>
+          {characters.map((char, i) => (
+            <motion.div
+              key={char.id}
+              whileHover={{ scale: 1.05 }}
+              style={{
+                aspectRatio: "1", borderRadius: 8, cursor: "pointer",
+                background: char.role === "protagonist"
+                  ? "linear-gradient(135deg, hsl(355, 60%, 40%), hsl(260, 60%, 50%))"
+                  : `linear-gradient(135deg, hsl(${180 + i * 40}, 50%, 30%), hsl(${220 + i * 30}, 50%, 20%))`,
+                border: "1px solid hsla(240, 20%, 30%, 0.5)", position: "relative", overflow: "hidden",
+                boxShadow: "inset 0 0 20px hsla(0,0%,0%,0.5)", display: "flex", alignItems: "flex-end", padding: 6
+              }}
+            >
+               <span style={{ fontSize: 9, fontWeight: 700, color: "white", textShadow: "0 1px 4px black", zIndex: 10 }}>
+                 {char.name}
+               </span>
+               <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 24, height: 24, borderRadius: "50%", background: "hsla(0,0%,0%,0.4)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+                 <div style={{ width: 0, height: 0, borderLeft: "6px solid white", borderTop: "4px solid transparent", borderBottom: "4px solid transparent", marginLeft: 2 }} />
+               </div>
+            </motion.div>
           ))}
         </div>
-        <div style={{ fontSize: 10, color: "hsl(var(--text-muted))", lineHeight: 1.5 }}>
-          {rlData.patterns.map((p, i) => <div key={i} style={{ marginBottom: 2 }}>💡 {p}</div>)}
-        </div>
       </SidebarSection>
 
-      {/* Pipeline */}
-      <SidebarSection title="Pipeline" icon={<GitBranch size={12} />}>
-        {pipeline.stages.map((stage, i) => <PipelineStage key={i} stage={stage} index={i} />)}
+      {/* System Architecture */}
+      <SidebarSection title="System Architecture" icon={<Bot size={14} />}>
+        <div style={{ padding: "0 4px", display: "flex", flexDirection: "column", gap: 0 }}>
+          {pipeline.stages.map((stage, i) => {
+             const isDone = stage.status === "done";
+             const isActive = stage.status === "processing";
+             const isQueued = stage.status === "queued" || stage.status === "idle";
+             
+             return (
+               <div key={i} style={{ display: "flex", gap: 12, opacity: isQueued ? 0.4 : 1 }}>
+                 {/* Timeline line & node */}
+                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 16 }}>
+                   <div style={{ 
+                     width: 14, height: 14, borderRadius: "50%", 
+                     background: isDone ? "hsla(160, 80%, 40%, 0.2)" : isActive ? "hsla(260, 80%, 60%, 0.2)" : "transparent",
+                     border: "1px solid", borderColor: isDone ? "hsl(160, 80%, 40%)" : isActive ? "hsl(260, 80%, 60%)" : "hsl(var(--text-muted))",
+                     display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2,
+                     marginTop: 4
+                   }}>
+                     {isDone && <Check size={8} color="hsl(160, 80%, 50%)" />}
+                     {isActive && <Loader2 size={10} color="hsl(260, 80%, 60%)" style={{ animation: "spin 1s linear infinite" }} />}
+                   </div>
+                   {i < pipeline.stages.length - 1 && <div style={{ width: 1, flex: 1, background: "hsla(240, 20%, 30%, 0.5)", marginTop: 2, marginBottom: -4 }} />}
+                 </div>
+                 {/* Text content */}
+                 <div style={{ flex: 1, paddingBottom: 16, paddingTop: 2 }}>
+                   <div style={{ fontSize: 13, fontWeight: isDone || isActive ? 600 : 500, color: isDone || isActive ? "hsl(var(--text-primary))" : "hsl(var(--text-muted))" }}>{stage.name}</div>
+                   {isActive && <div style={{ fontSize: 11, color: "hsl(260, 80%, 60%)", marginTop: 2 }}>Processing...</div>}
+                   {isDone && stage.time && <div style={{ fontSize: 10, color: "hsl(var(--text-muted))", marginTop: 2 }}>{stage.time}s</div>}
+                 </div>
+               </div>
+             )
+          })}
+        </div>
       </SidebarSection>
     </motion.aside>
   );
