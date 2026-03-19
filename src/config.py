@@ -17,8 +17,15 @@ GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "creator-anime-assets")
 MODEL_FLASH_IMAGE = "gemini-3.1-flash-image-preview"
 # Nano Banana Pro — professional quality, thinking mode, up to 4K
 MODEL_PRO_IMAGE = "gemini-3-pro-image-preview"
-# Text-only reasoning backbone
+# Text-only reasoning backbone (primary)
 MODEL_FLASH_TEXT = "gemini-2.5-flash"
+
+# ── Fallback text models (separate quotas on free tier) ───────
+# Use when primary hits 429; each model has its own daily limit
+MODEL_FLASH_TEXT_FALLBACKS = [
+    "gemini-2.0-flash",      # Good alternative
+    "gemini-1.5-flash",      # Older, often higher free-tier limits
+]
 
 # ── Defaults ─────────────────────────────────────────────────
 DEFAULT_ASPECT_RATIO = "16:9"

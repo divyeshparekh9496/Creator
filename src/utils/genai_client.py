@@ -3,15 +3,15 @@ GenAI client with NO-LOOP retry policy, token optimization, and monitoring.
 
 NO-LOOP POLICY:
 - Max 2 retries (not 3) — fail fast, don't burn quota
-- If error says "limit: 0" or daily quota exhausted → STOP IMMEDIATELY (no retry)
+- Daily quota exhausted → STOP IMMEDIATELY, try fallback model if available
+- Transient 429 (rate limit) → retry with RetryInfo delay or exponential backoff
 - Circuit breaker: 3 consecutive failures → 60s cooldown
-- Per-call token budget check: skip if budget exceeded
 
 MONITORING:
 - Tracks every API call: model, tokens, latency, success/failure
-- Exposes stats via get_monitor_report()
 """
 import json
+import re
 import time
 from typing import List, Optional, Union
 from PIL import Image
@@ -23,6 +23,7 @@ from src.config import (
     MODEL_FLASH_IMAGE,
     MODEL_PRO_IMAGE,
     MODEL_FLASH_TEXT,
+    MODEL_FLASH_TEXT_FALLBACKS,
     DEFAULT_ASPECT_RATIO,
     DEFAULT_IMAGE_SIZE,
 )
@@ -33,10 +34,11 @@ from src.utils.token_optimizer import (
     TokenBudget,
 )
 
-MAX_RETRIES = 2                    # NO-LOOP: max 2 retries (down from 3)
-BACKOFF_BASE = 3                   # 3s, 9s
+MAX_RETRIES = 2                    # Max retries per model
+BACKOFF_BASE = 3                   # Exponential backoff: 3s, 9s
 CIRCUIT_BREAKER_THRESHOLD = 3      # 3 failures → cooldown
 CIRCUIT_BREAKER_COOLDOWN = 60
+MAX_RETRY_DELAY = 120              # Cap wait at 2 min
 
 
 class APIMonitor:
@@ -110,8 +112,21 @@ class GenAIClient:
         self.token_budget = TokenBudget()
 
     def _is_quota_exhausted(self, error_str: str) -> bool:
-        """NO-LOOP: detect hard quota exhaustion (limit: 0)."""
-        return "limit: 0" in error_str or "quotaperday" in error_str.lower().replace("_", "")
+        """Detect daily/per-project quota exhaustion — do not retry same model."""
+        s = error_str.lower().replace("_", "").replace("-", "")
+        return (
+            "limit: 0" in error_str
+            or "quotaperday" in s
+            or ("quota exceeded" in s and ("free" in s or "freetier" in s or "limit:" in error_str))
+            or "resource_exhausted" in s
+        )
+
+    def _parse_retry_delay(self, error_str: str) -> Optional[float]:
+        """Extract 'Please retry in X.Ys' or RetryInfo delay from 429 error."""
+        m = re.search(r"retry in (\d+(?:\.\d+)?)\s*s", error_str, re.I)
+        if m:
+            return min(float(m.group(1)), MAX_RETRY_DELAY)
+        return None
 
     def _check_circuit(self):
         if self._consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD:
@@ -131,17 +146,27 @@ class GenAIClient:
             self._circuit_open_until = time.time() + CIRCUIT_BREAKER_COOLDOWN
             print(f"[GenAI] ⛔ Circuit breaker TRIPPED — {CIRCUIT_BREAKER_COOLDOWN}s cooldown")
 
+    def _format_quota_error(self, error_str: str, model: str) -> str:
+        """Build a clear, actionable message for quota errors."""
+        if "429" in error_str or "resource exhausted" in error_str.lower():
+            return (
+                f"Gemini API quota exceeded for {model}. "
+                "Free tier: 20 requests/day per model. "
+                "Options: (1) Wait for daily reset, (2) Enable billing at https://aistudio.google.com/apikey, "
+                "(3) Use a different API key. See https://ai.google.dev/gemini-api/docs/rate-limits"
+            )
+        return error_str
+
     def _retry_call(self, func, stage: str = "unknown", model: str = "unknown"):
-        """NO-LOOP retry: max 2 attempts, stop immediately on quota exhaustion."""
+        """Retry with backoff. On daily quota exhaustion, raise clear error (caller may try fallback)."""
         self._check_circuit()
 
-        # Check token budget
         warning = self.token_budget.check_and_warn(stage)
         if warning and self.token_budget.is_over_budget:
             print(f"[GenAI] {warning}")
             raise RuntimeError(warning)
 
-        for attempt in range(MAX_RETRIES + 1):  # 0, 1, 2 = 3 total attempts max
+        for attempt in range(MAX_RETRIES + 1):
             start = time.time()
             try:
                 result = func()
@@ -153,57 +178,68 @@ class GenAIClient:
             except Exception as e:
                 latency = time.time() - start
                 error_str = str(e)
+                err_lower = error_str.lower()
 
-                # NO-LOOP: if quota is fully exhausted, STOP IMMEDIATELY
                 if self._is_quota_exhausted(error_str):
                     self.monitor.quota_stops += 1
                     self.monitor.record(model, stage, 0, 0, latency, False, "QUOTA_EXHAUSTED")
                     self._record_failure(error_str)
-                    print(f"[GenAI] 🛑 QUOTA EXHAUSTED — stopping immediately (no retry)")
-                    raise RuntimeError(
-                        "API quota fully exhausted (limit: 0). "
-                        "Enable billing at https://aistudio.google.com/apikey or wait for daily reset."
-                    )
+                    msg = self._format_quota_error(error_str, model)
+                    print(f"[GenAI] 🛑 Quota exceeded for {model}")
+                    raise RuntimeError(msg) from e
 
-                is_retryable = any(x in error_str.lower() for x in [
+                is_retryable = any(x in err_lower for x in [
                     "429", "resource exhausted", "rate limit",
                     "500", "503", "internal", "unavailable",
                 ])
 
                 if is_retryable and attempt < MAX_RETRIES:
-                    wait = BACKOFF_BASE ** (attempt + 1)
+                    delay = self._parse_retry_delay(error_str) or (BACKOFF_BASE ** (attempt + 1))
+                    delay = min(delay, MAX_RETRY_DELAY)
                     self.monitor.retries += 1
-                    print(f"[GenAI] Retry {attempt + 1}/{MAX_RETRIES} in {wait}s — {type(e).__name__}")
+                    print(f"[GenAI] ⏳ Retry {attempt + 1}/{MAX_RETRIES} in {delay:.0f}s — {type(e).__name__} (model: {model})")
                     self.monitor.record(model, stage, 0, 0, latency, False, f"retry_{attempt + 1}")
                     self._record_failure(error_str)
-                    time.sleep(wait)
+                    time.sleep(delay)
                 else:
                     self.monitor.record(model, stage, 0, 0, latency, False, error_str[:200])
                     self._record_failure(error_str)
                     raise
 
-    # ── Text generation (with compression) ────────────────────
+    # ── Text generation (with compression + fallback models) ───
     def generate_text(
         self, prompt: str, model: str = MODEL_FLASH_TEXT,
         system_instruction: Optional[str] = None, stage: str = "text",
     ) -> str:
         route = get_route(stage)
         compressed = compress_prompt(prompt, route.max_input_tokens)
-        actual_model = route.model if model == MODEL_FLASH_TEXT else model
+        primary = route.model if model == MODEL_FLASH_TEXT else model
+        models_to_try = [primary] + [m for m in MODEL_FLASH_TEXT_FALLBACKS if m != primary]
 
         config = types.GenerateContentConfig(response_modalities=["Text"])
         if system_instruction:
             config.system_instruction = compress_prompt(system_instruction, 1000)
 
-        def _call():
-            response = self.client.models.generate_content(
-                model=actual_model, contents=[compressed], config=config,
-            )
-            text = response.text or ""
-            self.token_budget.record(stage, compressed, text, False)
-            return text
+        last_error = None
+        for actual_model in models_to_try:
+            def _call(use_model=actual_model):
+                response = self.client.models.generate_content(
+                    model=use_model, contents=[compressed], config=config,
+                )
+                text = response.text or ""
+                self.token_budget.record(stage, compressed, text, False)
+                return text
 
-        return self._retry_call(_call, stage, actual_model)
+            try:
+                return self._retry_call(_call, stage, actual_model)
+            except RuntimeError as e:
+                last_error = e
+                if "quota" in str(e).lower() and actual_model != models_to_try[-1]:
+                    print(f"[GenAI] ⚡ Trying fallback model: {models_to_try[models_to_try.index(actual_model) + 1]}")
+                else:
+                    raise
+
+        raise last_error or RuntimeError("No model succeeded")
 
     def generate_json(
         self, prompt: str, model: str = MODEL_FLASH_TEXT,

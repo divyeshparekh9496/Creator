@@ -1,12 +1,11 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
  * Hook for real-time pipeline progress via SSE.
- *
- * Events: stage_start, stage_done, stage_cached, pipeline_complete, error
+ * Events: stage_start, stage_done, stage_cached, pipeline_complete, done, error
  */
 export function useStream() {
   const [status, setStatus] = useState("idle"); // idle | generating | done | error
@@ -68,14 +67,21 @@ export function useStream() {
         const data = JSON.parse(e.data);
         setStatus("done");
         setProgress(100);
-        sse.close();
+        if (data.result) setResult(data.result);
       });
 
-      sse.addEventListener("done", (e) => {
+      sse.addEventListener("done", async (e) => {
         const data = JSON.parse(e.data);
-        setResult(data.result);
+        setResult(data.result ?? null);
         setStatus("done");
         setProgress(100);
+        if (!data?.result && job_id) {
+          try {
+            const jobRes = await fetch(`${API_BASE}/api/jobs/${job_id}`);
+            const jobData = await jobRes.json();
+            if (jobData?.result) setResult(jobData.result);
+          } catch (_) {}
+        }
         sse.close();
       });
 
